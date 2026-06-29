@@ -247,9 +247,60 @@ function renderBadge() {
   $("badge-preview").innerHTML = badgeSvg();
 }
 
+// Clipboard with graceful degradation. navigator.clipboard.writeText is only
+// exposed in secure contexts (https / localhost); over plain http://<hostname> it is
+// absent/blocked. Fall back to a hidden <textarea> + execCommand('copy'), and if even
+// that fails, reveal the text pre-selected for a manual Ctrl+C. Returns a boolean.
+async function copyText(text) {
+  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (ok) return true;
+  } catch { /* fall through */ }
+  return false;
+}
+
+// Last resort when both clipboard paths fail: show a visible, pre-selected textarea.
+function revealForManualCopy(text) {
+  let ta = $("copy-fallback");
+  if (!ta) {
+    ta = document.createElement("textarea");
+    ta.id = "copy-fallback";
+    ta.className = "copy-fallback";
+    ta.setAttribute("readonly", "");
+    ta.rows = 3;
+    $("badge-sec").appendChild(ta);
+  }
+  ta.style.display = "block";
+  ta.value = text;
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+}
+
 async function copy(text, label) {
-  try { await navigator.clipboard.writeText(text); $("copy-status").textContent = `${label} copied`; }
-  catch { $("copy-status").textContent = "copy failed — select and copy manually"; }
+  const ok = await copyText(text);
+  const fb = $("copy-fallback");
+  if (ok) {
+    $("copy-status").textContent = `${label} copied`;
+    if (fb) fb.style.display = "none";
+  } else {
+    $("copy-status").textContent = `${label}: copy blocked — select the text below and copy manually`;
+    revealForManualCopy(text);
+  }
 }
 
 // --- wire up -----------------------------------------------------------------

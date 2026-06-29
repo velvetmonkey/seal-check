@@ -84,6 +84,9 @@ td.mono { word-break: break-all; }
 
 .badge-preview { margin: 12px 0; }
 .badge-preview svg { display: block; }
+.copy-fallback { display: none; width: 100%; margin-top: 10px; padding: 10px;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--warn);
+  border-radius: 8px; font-family: var(--mono); font-size: 12px; resize: vertical; }
 
 .claim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
 .claim { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--panel); }
