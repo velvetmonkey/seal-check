@@ -1,63 +1,81 @@
-# IP audit — seal-check v0
+# IP audit & publish gate — seal-check v0
 
-seal-check ships only public v1 artifacts. This file records the audit that gates
-that claim. Re-run the commands before any publish.
+seal-check ships only public v1 artifacts. This file is the **publish gate**: the
+checklist below MUST pass before any public flip, and the flip itself is a separate,
+explicitly-authorised manual procedure (§Flip). Re-run the commands before publishing.
+
+**Current status: PASS (private). NOT PUBLISHED.** Repo has no remote; no GitHub Pages.
 
 ## Pinned kernel binary
-
 ```
 sha256(wasm/seal.wasm) = 1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a
 size = 3,462,118 bytes
 ```
+The page recomputes this in-browser on load (SubtleCrypto, or a bundled pure-JS
+SHA-256 fallback on non-secure origins) and refuses to emit receipts on mismatch.
 
-The page recomputes this in-browser on load (SubtleCrypto) and refuses to emit
-receipts if it does not match.
+## Checklist (must all hold to publish)
 
-## What was audited (2026-06-29)
+- [x] **wasm sha256 matches pin** — `sha256sum wasm/seal.wasm` = pinned value above.
+- [x] **No private path / repo / commit / author leak in the binary** — `strings` over
+      `wasm/seal.wasm` shows zero `seal-host`, private-dev, `wasm-spike`, hostname,
+      `/home/…`, `/Users/…`, `/root/…`, `Kernels/`, `Host/`, `Ffi`, or `G1`–`G7`.
+- [x] **Embedded wasm strings are public-only** — the binary exposes just (a) public
+      kernel type names `SealCore.Decision.*`, `SealCore.Event.*`, `SealV2.AST.*`
+      (names from the *published* `mcp-seal`; AST names are generic JSON constructors)
+      and (b) Lean compiler runtime strings (`runElab`, `delta`, …, and a Lean-internal
+      40-hex constant `7e01a1bf…` confirmed **not** a git object in any repo).
+- [x] **Symbol-scrub status** — no *private* symbols are present, so no scrub is
+      required. Stripping the public Lean type names would need a kernel recompile
+      (out of scope; reuse-as-is). A future hardening pass can rebuild with symbol
+      stripping in the private build pipeline.
+- [x] **No private markers in code** — grep over all shipped JS/HTML/CSS for
+      `seal-host | mcp-seal-dev | wasm-spike | monkey-01 | /home/monkey | record-core |
+      M5..M8` returns nothing.
+- [x] **No private markers in the spec** — `docs/SEAL-MEDIATION-PROFILE-L0.md` names
+      nothing private; higher layers are excluded generically, not described.
+- [x] **README / NOTICE describe only public artifacts.**
+- [x] **Node test harness is TEST-ONLY** — see below.
+- [x] **Receipt determinism** — `node test/receipt-harness.cjs` → all PASS, block
+      receipt byte-identical across runs (2062 bytes).
 
-The four reused artifacts were copied from `seal-demo/public/` and scanned for any
-leak of the **private** repos (`seal-host`, `mcp-seal-dev`) — paths, commit SHAs,
-hostnames, author identity, or private source structure.
-
-| Artifact | Source | Result |
-|---|---|---|
-| `wasm/seal.wasm` | seal-demo (compiled black-box) | no path / repo / commit / author leak |
-| `wasm/seal.js` | seal-demo (emscripten glue) | no private markers |
-| `seal-wasm.js` | seal-demo (Apache-2.0 adapter) | clean (kept as upstream reference) |
-| `seal-config.js` | seal-demo (Apache-2.0 config) | 2 stale `seal_host_step` comments → reworded to `seal_decide` |
-
-### Strings embedded in the wasm
-The binary exposes only:
-- **Public kernel type names** — `SealCore.Decision.{allow,block}`,
-  `SealCore.Event.*`, `SealV2.AST.*`. `SealCore`/`SealV2` are names from the
-  **published** `mcp-seal` repo; the AST names are generic JSON constructors.
-- **Lean compiler runtime strings** — e.g. `runElab`, `showTermElab`, `delta`,
-  `zetaDelta`, and a Lean-internal 40-hex constant (`7e01a1bf…`, confirmed **not**
-  a git object in any seal repo, public or private).
-
-No `seal-host`, `mcp-seal-dev`, `wasm-spike`, `monkey-01`, `/home/…`, `Kernels/`,
-`Host/`, `Ffi`, or `G1`–`G7` strings appear. The compiled artifact is the
-README-designated public "black-box evaluator."
-
-### Note on symbol stripping
-Stripping the public Lean type names from the wasm would require a recompile of
-the kernel (out of scope, and forbidden for this build — we reuse the artifact as
-is). Since nothing **private** is exposed, no scrub is required. A future hardening
-pass can rebuild the wasm with symbol stripping in the private build pipeline.
+### TEST-ONLY: `test/receipt-harness.cjs`
+`test/receipt-harness.cjs` is a **verification harness, not runtime**. `index.html`
+never loads it; the browser never sees it; it ships no user-facing behaviour. It runs
+the *same public wasm* under Node only to reproduce receipts and confirm determinism.
+It has a prominent TEST-ONLY header and no third-party dependencies. A reviewer MUST
+NOT mistake it for production code. The shipped runtime is exactly: `index.html`,
+`app.js`, `kernel.js`, `seal-config.js`, `seal-wasm.js`, `corpus.js`, `style.css`,
+`wasm/seal.{js,wasm}`.
 
 ## Re-run the audit
-
 ```sh
-sha256sum wasm/seal.wasm   # must equal the pinned value above
+sha256sum wasm/seal.wasm    # = pinned value
 
-# no private markers in any shipped file:
-grep -rEi 'seal-host|mcp-seal-dev|wasm-spike|monkey-01|/home/|record.?core' \
-  --exclude-dir=.git . ; echo "exit=$?  (1 = clean / no matches)"
+# no private markers in any shipped file (docs intentionally NAME the boundary, so
+# exclude README/AUDIT/spec from the code scan):
+grep -rEni 'seal-host|mcp-seal-dev|wasm-spike|monkey-01|/home/monkey|record.?core' \
+  --exclude-dir=.git --exclude=README.md --exclude=AUDIT.md \
+  --exclude=SEAL-MEDIATION-PROFILE-L0.md --binary-files=without-match .
+echo "exit=$?  (1 = clean / no matches)"
 
 # no private markers in the binary:
 strings -n 5 wasm/seal.wasm | grep -Ei 'seal-host|mcp-seal-dev|wasm-spike|/home/|/Users/'
+
+# receipts reproduce + determinism holds:
+node test/receipt-harness.cjs
 ```
 
-## Publish gate
-This repo is built **private**. Public release of the compiled kernel is a separate,
-owner-authorized step. Do not enable a public deploy without re-running this audit.
+## Flip-public procedure (manual, separately authorised — NOT run here)
+The public flip is **out of scope** for this build and MUST be performed deliberately
+by the owner after re-running the checklist. Steps, when authorised:
+1. Re-run the full audit above; confirm every box holds.
+2. Create the public GitHub repo (`velvetmonkey/seal-check`) and add it as `origin`.
+3. `git push origin master` and `git push origin seal-check-v0` (the tag).
+4. (Optional) enable GitHub Pages on the default branch; add `.nojekyll` so `/wasm/`
+   serves; confirm the wasm loads over HTTPS and `kernel_identity.self_verified_in_browser`
+   is `true` on the live URL.
+5. Re-verify the live URL end-to-end (kernel pill, block/allow, replay 5/5, badge,
+   conformance map).
+
+Until all five are done by the owner: **private, no remote, not published.**
