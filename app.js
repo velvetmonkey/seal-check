@@ -107,6 +107,42 @@ function paintVerdict(node, denyNode, parsed) {
   denyNode.textContent = parsed.deny_kernel ? `denied by: ${parsed.deny_kernel}` : "";
 }
 
+// --- conformance map (receipt field -> SEAL-MEDIATION-PROFILE-L0 clause) ------
+// Each row: [field path, clause ref(s), requirement title, value getter]. Documented
+// in docs/SEAL-MEDIATION-PROFILE-L0.md. Both block + allow flow through renderSpec.
+const CLAUSE_MAP = [
+  ["seal_check_receipt", "§4.1", "receipt format version", (r) => r.seal_check_receipt],
+  ["input.request_line", "§4.2 · §2.2", "canonical tools/call (parse witness)", (r) => r.input.request_line],
+  ["input.now", "§4.2 · §5", "logical clock (determinism)", (r) => r.input.now],
+  ["input.approvals", "§4.2 · §3.1", "approval targets (capability)", (r) => JSON.stringify(r.input.approvals)],
+  ["verdict", "§2.2 · §2.3", "mediation-contract verdict", (r) => r.verdict],
+  ["reason", "§4.3", "decision reason", (r) => r.reason],
+  ["deny_kernel", "§4.3 · §3", "denying gate (null if allowed)", (r) => String(r.deny_kernel)],
+  ["emitted_bytes", "§2.2 · §4.4", "canonical decision bytes (verbatim)", (r) => `${r.emitted_bytes.length} bytes`],
+  ["witness.certs", "§4.5 · §3", "per-gate seals", (r) => r.witness.certs.map((c) => `${c.kernel}:${c.verdict}`).join(", ") || "—"],
+  ["witness.certs[].certHash", "§4.5", "per-gate FNV seal", (r) => r.witness.certs.map((c) => c.certHash.slice(0, 8) + "…").join(", ") || "—"],
+  ["kernel_identity.wasm_sha256", "§6.1", "binary identity (self-verified)", (r) => r.kernel_identity.wasm_sha256.slice(0, 12) + "…"],
+  ["kernel_identity.self_verified_in_browser", "§6.1 · §5", "verified in browser", (r) => String(r.kernel_identity.self_verified_in_browser)],
+  ["asserted_provenance.lean_toolchain", "§6.2", "asserted, NOT verified here", (r) => r.asserted_provenance.lean_toolchain],
+  ["asserted_provenance.axioms", "§6.2", "asserted axiom footprint", (r) => r.asserted_provenance.axioms.join(", ")],
+  ["asserted_provenance.verified_in_browser", "§6.2", "MUST be false", (r) => String(r.asserted_provenance.verified_in_browser)],
+];
+
+function renderSpec(receipt) {
+  const tb = $("spec-map").querySelector("tbody");
+  tb.replaceChildren();
+  for (const [field, ref, title, get] of CLAUSE_MAP) {
+    let val;
+    try { val = String(get(receipt)); } catch { val = "—"; }
+    if (val.length > 84) val = val.slice(0, 84) + "…";
+    const tr = el("tr");
+    tr.append(el("td", "mono", field), el("td", "mono", val), el("td", "spec-ref", ref), el("td", null, title));
+    tb.append(tr);
+  }
+  $("spec-empty").classList.add("hidden");
+  $("spec-map").classList.remove("hidden");
+}
+
 function renderWitness(parsed) {
   $("cert-count").textContent = String(parsed.certs.length);
   const tb = $("witness").querySelector("tbody");
@@ -135,6 +171,7 @@ async function runInput() {
   $("reason").textContent = res.parsed.reason;
   renderWitness(res.parsed);
   $("receipt").textContent = canonicalReceiptJson(receipt);
+  renderSpec(receipt);
   $("determinism").textContent = "";
   $("result").classList.remove("hidden");
 
