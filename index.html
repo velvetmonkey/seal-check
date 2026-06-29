@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>seal-check — is your MCP boundary actually mediated?</title>
+  <meta name="description" content="Paste an MCP tool-call, get a deterministic Allow/Block verdict and a reproducible receipt from the verified seal kernel, entirely in your browser. No backend, no data leaves the page." />
+  <link rel="stylesheet" href="style.css" />
+  <!-- classic script installs window.SealModule (the compiled black-box kernel) -->
+  <script src="wasm/seal.js"></script>
+</head>
+<body>
+  <header class="wrap">
+    <h1>seal-check</h1>
+    <p class="tag">Is your MCP boundary <em>actually</em> mediated? Paste a tool-call, get a deterministic
+      <strong>Allow / Block</strong> verdict and a reproducible receipt from the verified
+      <strong>seal</strong> kernel — running entirely in your browser.</p>
+    <div id="kernel-status" class="pill pill-wait" title="Binary identity of the kernel running in your browser">
+      checking kernel…
+    </div>
+    <p class="privacy">No backend. No accounts. No telemetry. Nothing you paste leaves this page.</p>
+  </header>
+
+  <main class="wrap">
+
+    <!-- 1. CHECK A CALL ----------------------------------------------------->
+    <section id="check">
+      <h2>1 · Check a call</h2>
+      <p class="muted">Paste an MCP tool-call as JSON — either a JSON-RPC <code>tools/call</code> or a simple
+        <code>{ "tool", "args", "approvals" }</code> object. It runs against a standard multi-kernel policy.</p>
+      <div class="examples">
+        <button class="ex" data-ex="block">Load a blocked example</button>
+        <button class="ex" data-ex="allow">Load an allowed example</button>
+      </div>
+      <textarea id="call-input" spellcheck="false" rows="9" aria-label="MCP tool-call JSON"></textarea>
+      <div class="row">
+        <button id="run-btn" class="primary">Run through kernel</button>
+        <span id="run-error" class="error" role="alert"></span>
+      </div>
+
+      <div id="result" class="result hidden">
+        <div class="verdict-row">
+          <span id="verdict" class="verdict"></span>
+          <span id="deny-kernel" class="deny-kernel"></span>
+        </div>
+        <p id="reason" class="reason"></p>
+
+        <details id="witness-wrap" open>
+          <summary>Parse witness — per-gate seals (<span id="cert-count">0</span>)</summary>
+          <table id="witness"><thead><tr><th>kernel</th><th>verdict</th><th>reason</th><th>certHash</th></tr></thead><tbody></tbody></table>
+        </details>
+
+        <div class="receipt-head">
+          <h3>Decision receipt</h3>
+          <div class="receipt-actions">
+            <button id="download-receipt">Download receipt.json</button>
+            <button id="rerun-receipt" title="Run the same input again and confirm byte-identical output">Verify determinism</button>
+          </div>
+        </div>
+        <p id="determinism" class="determinism"></p>
+        <pre id="receipt" class="receipt"></pre>
+      </div>
+    </section>
+
+    <!-- 2. REPLAY ----------------------------------------------------------->
+    <section id="replay">
+      <h2>2 · Replay known bypass attacks</h2>
+      <p class="muted">Each is a named trace that <em>should not</em> get through. One click runs it against the
+        live kernel; the verdict shown is the kernel's, read back from the receipt.</p>
+      <div class="row"><button id="replay-all" class="primary">Replay all</button>
+        <span id="replay-summary" class="muted"></span></div>
+      <div id="corpus" class="corpus"></div>
+    </section>
+
+    <!-- 3. BADGE ------------------------------------------------------------>
+    <section id="badge-sec">
+      <h2>3 · "seal-checked boundary" badge</h2>
+      <p class="muted">A self-contained badge carrying the kernel's short sha256. It records that a call was
+        checked against this verified kernel binary — nothing more (see panel below).</p>
+      <div id="badge-preview" class="badge-preview"></div>
+      <div class="row">
+        <button id="copy-badge-svg">Copy badge (SVG)</button>
+        <button id="copy-badge-md">Copy badge (Markdown)</button>
+        <span id="copy-status" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- 4. CLAIM DISCIPLINE (always visible) -------------------------------->
+    <section id="claims">
+      <h2>What this proves — and what it does not</h2>
+      <div class="claim-grid">
+        <div class="claim proves">
+          <h3>✓ What this proves</h3>
+          <p>For the exact call you supplied, this is the deterministic Allow/Block decision produced by the
+            seal mediation kernel whose binary <code>sha256</code> is shown above, executed in your browser.
+            That kernel's decision logic is the subject of public Lean&nbsp;4 proofs that assert the stated
+            mediation properties — <em>modulo their stated assumptions and the axioms
+            {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Same input → byte-identical receipt, every
+            reload. Nothing leaves your browser.</p>
+        </div>
+        <div class="claim notproves">
+          <h3>✗ What this does NOT prove</h3>
+          <p>It does not certify your whole MCP server, your transport, your tool implementations, or that your
+            deployment actually routes calls through this gate. The <code>sha256</code> verifies <em>which binary
+            ran</em> — it does <strong>not</strong> prove the axioms or the Lean proofs themselves. No third party
+            certifies anything here. In particular <strong>ARIA certifies nothing</strong> — no ARIA endorsement,
+            outcome, affiliation, or status is claimed or implied. This is not an endorsement and not a
+            trustworthiness badge for your server.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <h3>Kernel identity</h3>
+    <dl class="ident">
+      <dt>wasm sha256 <span class="lab lab-ok">self-verified in browser</span></dt>
+      <dd id="ident-sha" class="mono"></dd>
+      <dt>lean toolchain <span class="lab lab-asserted">asserted, not verified here</span></dt>
+      <dd class="mono">leanprover/lean4:v4.28.0</dd>
+      <dt>axiom footprint <span class="lab lab-asserted">asserted, not verified here</span></dt>
+      <dd class="mono">propext · Classical.choice · Quot.sound</dd>
+    </dl>
+    <p class="muted">seal-check is a client-side checker. The kernel runs as a compiled black-box evaluator;
+      its source proofs are public but are not re-checked in the browser. Apache-2.0.</p>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
