@@ -68,6 +68,15 @@ function inputBlockFrom(stepStr, call) {
 // --- kernel boot + self-verification ----------------------------------------
 async function boot() {
   const pill = $("kernel-status");
+  // file:// blocks both the wasm fetch and SubtleCrypto. Tell the user the fix up front.
+  if (location.protocol === "file:") {
+    LOCKED = true;
+    pill.className = "pill pill-bad";
+    pill.textContent = "open over http, not file:// — run  python3 -m http.server 8000  then visit http://localhost:8000";
+    $("run-btn").disabled = true;
+    $("replay-all").disabled = true;
+    return;
+  }
   try {
     SHA = await verifyKernelSha();
     $("ident-sha").textContent = SHA.computed;
