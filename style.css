@@ -111,3 +111,10 @@ footer { padding: 26px 20px 60px; color: var(--muted); }
 @media (max-width: 640px) {
   .claim-grid { grid-template-columns: 1fr; }
 }
+
+/* deep-linked receipt verification */
+.rv-checks { list-style: none; padding: 0; margin: .6rem 0; }
+.rv-checks li { padding: .2rem 0; font-size: .95rem; }
+.rv-ok { color: #1a7f37; }
+.rv-bad { color: #cf222e; font-weight: 600; }
+.rv-skip { color: #6e7781; }

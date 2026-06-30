@@ -24,6 +24,25 @@
 
   <main class="wrap">
 
+    <!-- 0. DEEP-LINKED RECEIPT (shown only when opened via #receipt=...) ----->
+    <section id="receipt-verify" class="hidden">
+      <h2>Verifying a receipt</h2>
+      <p class="muted" id="rv-context"></p>
+      <div class="result">
+        <div class="verdict-row">
+          <span id="rv-verdict" class="verdict"></span>
+          <span id="rv-deny" class="deny-kernel"></span>
+        </div>
+        <ul id="rv-checks" class="rv-checks"></ul>
+        <p id="rv-summary" class="reason"></p>
+        <details>
+          <summary>the receipt (raw JSON)</summary>
+          <pre id="rv-json" class="receipt"></pre>
+        </details>
+        <p class="muted">Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel.</p>
+      </div>
+    </section>
+
     <!-- 1. CHECK A CALL ----------------------------------------------------->
     <section id="check">
       <h2>1 · Check a call</h2>

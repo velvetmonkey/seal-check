@@ -6,6 +6,7 @@ import {
 } from "./kernel.js";
 import { CFG_STANDARD, stableHash } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
+import { decodeReceiptParam, verifyReceipt } from "./receipt.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -85,6 +86,7 @@ async function boot() {
       pill.textContent = `kernel verified · sha256 ${SHA.computed.slice(0, 8)}…`;
       await ready();
       renderBadge();
+      await maybeRenderDeepLinkedReceipt();
     } else {
       LOCKED = true;
       pill.className = "pill pill-bad";
@@ -338,6 +340,54 @@ async function copy(text, label) {
     $("copy-status").textContent = `${label}: copy blocked — select the text below and copy manually`;
     revealForManualCopy(text);
   }
+}
+
+// --- deep-linked receipt verification (opened via #receipt=...) --------------
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function rvLine(okFlag, text) {
+  const li = el("li", "rv-" + (okFlag === true ? "ok" : okFlag === false ? "bad" : "skip"));
+  li.textContent = (okFlag === true ? "✓ " : okFlag === false ? "✗ " : "• ") + text;
+  return li;
+}
+function showReceiptError(msg) {
+  $("receipt-verify").classList.remove("hidden");
+  const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
+}
+async function maybeRenderDeepLinkedReceipt() {
+  let receipt;
+  try { receipt = decodeReceiptParam(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
+  if (!receipt) return;
+  $("receipt-verify").classList.remove("hidden");
+  let r;
+  try { r = await verifyReceipt(receipt); } catch (e) { return showReceiptError("verification error: " + e.message); }
+
+  const a = receipt.arguments || {};
+  const verdictNode = $("rv-verdict");
+  verdictNode.textContent = receipt.verdict === "BLOCK" ? "REFUSED" : receipt.verdict === "ALLOW" ? "ALLOWED" : (receipt.verdict || "?");
+  verdictNode.className = "verdict " + (receipt.verdict === "BLOCK" ? "v-block" : receipt.verdict === "ALLOW" ? "v-allow" : "v-error");
+  $("rv-deny").textContent = receipt.deny_kernel ? `${receipt.deny_kernel} rule` : "";
+
+  $("rv-context").innerHTML = `An AI agent's tool-call was mediated by the seal gate: it asked to run ` +
+    `<code>${escapeHtml(a.operation)}</code> on <code>${escapeHtml(a.table)}</code>. The gate's decision, re-checked below:`;
+
+  const ul = $("rv-checks"); ul.textContent = "";
+  ul.append(rvLine(r.kernelShaMatch, `kernel binary self-verified (sha256 ${r.kernelSha.slice(0, 12)}…, matches the receipt)`));
+  ul.append(rvLine(r.requestHashMatch, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…)`));
+  if (r.verdictMatch === null) {
+    ul.append(rvLine(null, receipt.bypass ? "verdict not re-derivable: this receipt had the gate switched OFF (the control)" : "verdict not re-derivable (receipt carries no policy)"));
+  } else {
+    ul.append(rvLine(r.verdictMatch, `verdict reproduced on-device: ${r.rederived === "BLOCK" ? "REFUSED" : r.rederived} (re-ran the exact request through the kernel)`));
+  }
+
+  $("rv-json").textContent = JSON.stringify(receipt, null, 2);
+  const s = $("rv-summary");
+  s.textContent = r.allGood
+    ? "All checks passed. This receipt is genuine: the verified kernel really did make this decision, and you just reproduced it."
+    : "One or more checks did not pass. Treat this receipt with suspicion.";
+  s.className = "reason " + (r.allGood ? "ok" : "bad");
+  $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // --- wire up -----------------------------------------------------------------
