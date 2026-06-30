@@ -364,6 +364,27 @@ function showReceiptError(msg) {
   focusReceiptMode();
   const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
 }
+
+// The control receipt: seal was switched OFF (bypass), so there is no kernel
+// decision to verify. Render it honestly, NOT as a passed verification.
+function renderControlReceipt(receipt, a) {
+  const verdictNode = $("rv-verdict");
+  verdictNode.textContent = "NO GATE";
+  verdictNode.className = "verdict v-block";
+  $("rv-deny").textContent = "seal switched off (control)";
+  $("rv-context").innerHTML = `This is the <strong>control</strong> run. The gate was switched OFF, so it did not mediate the call. ` +
+    `The agent ran <code>${escapeHtml(a.operation)}</code> on <code>${escapeHtml(a.table)}</code>, the byte-for-byte identical request to the blocked attack.`;
+  const ul = $("rv-checks"); ul.textContent = "";
+  ul.append(rvLine(true, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…), the same request as the blocked attack`));
+  ul.append(rvLine(null, "the gate was OFF, so the verified kernel did NOT run, nothing mediated this call"));
+  const ex = receipt.execution || {};
+  ul.append(rvLine(false, ex.executed ? `result: the delete EXECUTED, ${ex.rows_affected} rows destroyed` : "result: no execution recorded"));
+  $("rv-json").textContent = JSON.stringify(receipt, null, 2);
+  const s = $("rv-summary");
+  s.textContent = "Without the gate, the identical attack succeeded and the data was destroyed. That is exactly what the gate prevents.";
+  s.className = "reason bad";
+  $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 async function maybeRenderDeepLinkedReceipt() {
   let receipt;
   try { receipt = decodeReceiptParam(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
@@ -373,6 +394,7 @@ async function maybeRenderDeepLinkedReceipt() {
   try { r = await verifyReceipt(receipt); } catch (e) { return showReceiptError("verification error: " + e.message); }
 
   const a = receipt.arguments || {};
+  if (receipt.bypass) return renderControlReceipt(receipt, a);
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = receipt.verdict === "BLOCK" ? "REFUSED" : receipt.verdict === "ALLOW" ? "ALLOWED" : (receipt.verdict || "?");
   verdictNode.className = "verdict " + (receipt.verdict === "BLOCK" ? "v-block" : receipt.verdict === "ALLOW" ? "v-allow" : "v-error");
