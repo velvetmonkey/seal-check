@@ -351,15 +351,24 @@ function rvLine(okFlag, text) {
   li.textContent = (okFlag === true ? "✓ " : okFlag === false ? "✗ " : "• ") + text;
   return li;
 }
-function showReceiptError(msg) {
+// Receipt scenario: focus the page on the receipt, hide the interactive wedge UI.
+function focusReceiptMode() {
   $("receipt-verify").classList.remove("hidden");
+  for (const sec of document.querySelectorAll("main > section")) {
+    if (sec.id !== "receipt-verify") sec.classList.add("hidden");
+  }
+  const tag = document.querySelector("header .tag");
+  if (tag) tag.classList.add("hidden");
+}
+function showReceiptError(msg) {
+  focusReceiptMode();
   const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
 }
 async function maybeRenderDeepLinkedReceipt() {
   let receipt;
   try { receipt = decodeReceiptParam(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
   if (!receipt) return;
-  $("receipt-verify").classList.remove("hidden");
+  focusReceiptMode();
   let r;
   try { r = await verifyReceipt(receipt); } catch (e) { return showReceiptError("verification error: " + e.message); }
 
