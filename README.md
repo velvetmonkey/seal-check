@@ -54,6 +54,10 @@ verifies *which binary ran* — not the axioms or the proofs. No third party cer
 anything here; **ARIA certifies nothing** — no endorsement, outcome, or affiliation is
 claimed or implied.
 
+**Profile:** seal's deployed host mediates under the `compatible` profile, not strict
+canonical-l0 (see seal-host CLAIMS.md); the canonical AST is audit input to the kernels,
+not the mediation gate.
+
 ## Kernel identity
 
 | | |
