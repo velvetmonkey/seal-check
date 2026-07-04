@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// ============================ TEST-ONLY — NOT SHIPPED ========================
+// Vector test for receipt-format.js against the frozen vectors in
+// seal-host/docs/DECISION-RECEIPT-SCHEMA.md (§2 V1/V4, §3 V2/V2b/V3).
+// Fails if the shared module and the normative spec ever disagree.
+// Self-contained: all vectors are embedded (no sibling-repo reads).
+//
+// Run:  node test/receipt-format.test.cjs
+// ============================================================================
+const path = require("path");
+
+let failures = 0;
+function check(name, got, want) {
+  const pass = got === want;
+  if (!pass) failures++;
+  console.log(`${pass ? "PASS" : "FAIL"}  ${name}${pass ? "" : `\n      got  ${got}\n      want ${want}`}`);
+}
+
+(async () => {
+  const F = await import("file://" + path.resolve(__dirname, "..", "receipt-format.js"));
+
+  // --- sanity: pure-JS sha256 against the NIST empty-string digest
+  check("sha256Hex(\"\")",
+    F.sha256Hex(new Uint8Array(0)),
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
+  // --- §2 V1: real seal-live-demo receipt (evidence/receipts.jsonl line 1)
+  const v1args = { operation: "insert", table: "staging_deploy_audit",
+    payload: "{\"deploy_ref\":\"deploy-2026-06-30\"}" };
+  check("V1 canonical line (byte-identical to the deployed gateway's stored canonical_request)",
+    F.canonicalRequest("db.execute", v1args),
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"db.execute\",\"arguments\":{\"operation\":\"insert\",\"table\":\"staging_deploy_audit\",\"payload\":\"{\\\"deploy_ref\\\":\\\"deploy-2026-06-30\\\"}\"}}}");
+  check("V1 canonical_request_sha256",
+    F.canonicalRequestSha256("db.execute", v1args),
+    "66330ea2242d45a5a6b32d85007464125608fec7e88430fa3c23d5c5303db756");
+
+  // --- §2 V4: the convergence proof — Schema K's stored hash (kit block
+  // fixture) is exactly what the v1 function produces for K's own (tool, args).
+  check("V4 canonical_request_sha256 (Schema K fixture pre-image)",
+    F.canonicalRequestSha256("db.execute", { database: "prod", sql: "drop table users" }),
+    "460d746ba064ab9398885158dddfd6d32f1722b0efe0d3b6085c8441e9127793");
+
+  // --- §3: capability-target convention [tool, ...policy parts]
+  check("V2 store.update literal grant", F.capabilityTarget("store.update", ["store"]).toString(), "11662918066780758608");
+  check("V2b payments.send literal grant", F.capabilityTarget("payments.send", ["pay"]).toString(), "2693940768235235512");
+  check("V3 live-demo arg-selected grant",
+    F.capabilityTarget("db.execute", ["staging_deploy_audit", "insert"]).toString(), "11517196862591714860");
+  check("capabilityTarget == stableHashParts([tool, ...parts])",
+    F.capabilityTarget("db.execute", ["a", "b"]).toString(),
+    F.stableHashParts(["db.execute", "a", "b"]).toString());
+
+  // --- §1: shape validation
+  const v1ok = {
+    seal_receipt: "v1", tool: "db.execute", arguments: v1args,
+    canonical_request: F.canonicalRequest("db.execute", v1args),
+    canonical_request_sha256: F.canonicalRequestSha256("db.execute", v1args),
+    bypass: false, verdict: "ALLOW", reason: "every gating kernel allows", deny_kernel: null,
+    certs: [], emitted_bytes: "{}",
+    kernel_identity: { wasm_sha256: "1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a", self_verified: true },
+    kernel_config: { epoch: 1 },
+    granted_capabilities: [{ tool: "db.execute", table: "staging_deploy_audit", operation: "insert" }],
+  };
+  let r = F.validateReceipt(v1ok);
+  check("validateReceipt v1 well-formed", JSON.stringify([r.ok, r.version, r.errors]), JSON.stringify([true, "v1", []]));
+
+  r = F.validateReceipt({ ...v1ok, seal_receipt: undefined, seal_live_receipt: "v0" });
+  check("validateReceipt accepts v0-live", JSON.stringify([r.ok, r.version]), JSON.stringify([true, "v0-live"]));
+
+  r = F.validateReceipt({ seal_check_receipt: "v0", input: {}, witness: {} });
+  check("validateReceipt rejects legacy Schema K", JSON.stringify([r.ok, r.version]), JSON.stringify([false, "v0-check"]));
+
+  r = F.validateReceipt({ ...v1ok, canonical_request: "{\"tampered\":1}" });
+  check("validateReceipt catches stored-line/derived-line mismatch", r.ok, false);
+
+  const byp = { seal_receipt: "v1", tool: "db.execute", arguments: v1args,
+    canonical_request_sha256: v1ok.canonical_request_sha256, bypass: true,
+    verdict: "ALLOW", reason: "bypass", kernel_identity: { wasm_sha256: null, self_verified: false } };
+  r = F.validateReceipt(byp);
+  check("validateReceipt bypass receipt (null wasm_sha256 required)", JSON.stringify([r.ok, r.errors]), JSON.stringify([true, []]));
+
+  r = F.validateReceipt({ ...byp, kernel_identity: { wasm_sha256: v1ok.kernel_identity.wasm_sha256, self_verified: true } });
+  check("validateReceipt rejects bypass with non-null wasm_sha256", r.ok, false);
+
+  console.log(failures === 0 ? "\nALL VECTORS PASS" : `\n${failures} FAILURE(S)`);
+  process.exit(failures === 0 ? 0 : 1);
+})().catch((e) => { console.error("ERR", e); process.exit(1); });
