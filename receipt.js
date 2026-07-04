@@ -4,8 +4,14 @@
 // through the SAME verified kernel binary with the receipt's own policy, and
 // self-verifies the kernel sha256. The receipt rides in the URL #fragment, which the
 // browser never sends to a server. No backend.
-import { decideRaw, verifyKernelSha, sha256Hex } from "./kernel.js";
-import { stableHash } from "./seal-config.js";
+//
+// Accepts schema v1 (seal_receipt) and the legacy v0-live dialect
+// (seal_live_receipt) per seal-host/docs/DECISION-RECEIPT-SCHEMA.md; legacy
+// Schema K objects are rejected with the spec's regenerate error.
+import { decideRaw, verifyKernelSha } from "./kernel.js";
+import {
+  canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, validateReceipt,
+} from "./receipt-format.js";
 
 function b64urlToStr(s) {
   s = s.replace(/-/g, "+").replace(/_/g, "/");
@@ -22,47 +28,67 @@ export function decodeReceiptParam() {
   return JSON.parse(b64urlToStr(enc));
 }
 
-// Rebuild the canonical JSON-RPC request the gateway hashed. MUST match decide.cjs's
-// canonicalRequest exactly, or the request-hash check is meaningless.
-function canonicalRequest({ operation, table, payload }) {
-  return JSON.stringify({
-    jsonrpc: "2.0", id: 1, method: "tools/call",
-    params: { name: "db.execute", arguments: { operation, table, payload } },
-  });
-}
-
-// Independently verify a receipt. Returns { kernelShaMatch, requestHashMatch,
-// rederived, verdictMatch, allGood, ... } — every field recomputed locally.
+// Independently verify a receipt. Returns { formatOk, kernelShaMatch,
+// requestHashMatch, rederived, verdictMatch, mediated, allGood, ... } — every
+// field recomputed locally per the spec's §7 verifier obligations.
 export async function verifyReceipt(receipt) {
   const out = { receipt };
 
-  // 1. The kernel binary in this browser is the audited one, AND it is the same
+  // 0. Shape first: version discriminator, field table, hard-split rule,
+  //    stored-line-vs-derived-line equality. A malformed receipt never
+  //    reaches the kernel.
+  const shape = validateReceipt(receipt);
+  out.formatOk = shape.ok;
+  out.formatVersion = shape.version;
+  out.formatErrors = shape.errors;
+  if (!shape.ok) { out.mediated = null; out.allGood = false; return out; }
+
+  // 1. Bypass receipts record that seal was REMOVED from the path. There is
+  //    no kernel verdict to verify — report NOT MEDIATED, never "verified".
+  if (receipt.bypass) {
+    out.mediated = false;
+    out.notMediated = "bypass receipt — seal was removed from the path; no kernel verdict exists";
+    out.allGood = false;
+    return out;
+  }
+  out.mediated = true;
+
+  // 2. The kernel binary in this browser is the audited one, AND it is the same
   //    binary the receipt names.
   const sha = await verifyKernelSha();
   out.kernelSha = sha.computed;
-  out.kernelShaMatch = sha.match &&
-    (!receipt.kernel_identity?.wasm_sha256 || receipt.kernel_identity.wasm_sha256 === sha.computed);
+  out.kernelShaMatch = sha.match && receipt.kernel_identity.wasm_sha256 === sha.computed;
 
-  // 2. The request bytes hash to the value the receipt claims (pure hash, no kernel).
-  const line = canonicalRequest(receipt.arguments || {});
-  out.requestHash = sha256Hex(new TextEncoder().encode(line));
-  out.requestHashMatch = !!receipt.canonical_request_sha256 && out.requestHash === receipt.canonical_request_sha256;
+  // 3. §2/§7: derive the canonical line from the SAME (tool, arguments) that
+  //    feeds re-derivation below; validateReceipt already pinned any stored
+  //    canonical_request to this exact line.
+  out.requestHash = canonicalRequestSha256(receipt.tool, receipt.arguments);
+  out.requestLine = canonicalRequest(receipt.tool, receipt.arguments);
+  out.requestHashMatch = out.requestHash === receipt.canonical_request_sha256;
 
-  // 3. Re-derive the verdict through the same kernel with the receipt's own policy.
-  //    (Bypass receipts deliberately removed seal, so there is nothing to re-derive.)
+  // 4. Re-derive the verdict through the same kernel with the receipt's own
+  //    policy. Approval targets recomputed per §3 (un-hashed entries via the
+  //    policy target spec; opaque {target} entries verbatim, counted).
   out.rederived = null; out.verdictMatch = null;
-  if (receipt.kernel_config && !receipt.bypass) {
+  const grants = capabilityTargetsFromPolicy(receipt.kernel_config, receipt.granted_capabilities);
+  out.opaqueGrants = grants.opaque;   // grants whose pre-image the producer did not hold
+  out.grantErrors = grants.errors;
+  if (grants.errors.length === 0) {
     try {
-      const approvals = (receipt.granted_capabilities || []).map((g) => stableHash([g.tool, g.table, g.operation]));
       const res = await decideRaw(receipt.kernel_config, {
-        tool: receipt.tool || "db.execute", args: receipt.arguments, approvals,
+        tool: receipt.tool, args: receipt.arguments, approvals: grants.approvals,
+        now: receipt.now ?? 1000,
       });
       out.rederived = res.parsed.verdict === "DENY" ? "BLOCK" : res.parsed.verdict;
       out.rederivedReason = res.parsed.reason;
       out.verdictMatch = out.rederived === receipt.verdict;
+      out.emittedBytesMatch = typeof receipt.emitted_bytes === "string"
+        ? res.raw === receipt.emitted_bytes : null;
     } catch (e) { out.rederiveError = e.message; }
   }
 
-  out.allGood = out.kernelShaMatch && out.requestHashMatch && out.verdictMatch !== false;
+  out.allGood = out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
+    out.verdictMatch === true && out.grantErrors.length === 0 &&
+    out.emittedBytesMatch !== false;
   return out;
 }

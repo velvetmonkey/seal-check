@@ -1,0 +1,172 @@
+{
+  "seal_receipt": "v1",
+  "tool": "store.update",
+  "arguments": {
+    "op": "orset.add",
+    "key": "k1"
+  },
+  "now": 1000,
+  "canonical_request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"store.update\",\"arguments\":{\"op\":\"orset.add\",\"key\":\"k1\"}}}",
+  "canonical_request_sha256": "c423e524f58c6bfff5e750dabd761795af1afc08ba895dd2322729f424f941ca",
+  "bypass": false,
+  "verdict": "ALLOW",
+  "reason": "every gating kernel allows",
+  "deny_kernel": null,
+  "certs": [
+    {
+      "kernel": "safety",
+      "verdict": "allow",
+      "reason": "11662918066780758608",
+      "certHash": "8609918026100345861"
+    },
+    {
+      "kernel": "temporal",
+      "verdict": "allow",
+      "reason": "trace ok (1 events)",
+      "certHash": "14726304512526927726"
+    },
+    {
+      "kernel": "convergence",
+      "verdict": "allow",
+      "reason": "convergent op admitted: orset.add",
+      "certHash": "13433098879217087007"
+    }
+  ],
+  "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"8609918026100345861\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"11662918066780758608\\\",\\\"verdict\\\":\\\"allow\\\"},{\\\"certHash\\\":\\\"14726304512526927726\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"},{\\\"certHash\\\":\\\"13433098879217087007\\\",\\\"kernel\\\":\\\"convergence\\\",\\\"reason\\\":\\\"convergent op admitted: orset.add\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"tool\\\":\\\"store.update\\\",\\\"verdict\\\":\\\"allow\\\"}\",\"route\":\"forward\"}",
+  "kernel_identity": {
+    "wasm_sha256": "1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a",
+    "self_verified": true,
+    "note": "Binary identity of the evaluator actually executed. Hashed in your browser from the loaded bytes and compared to a pinned constant. This is the ONLY thing verified here."
+  },
+  "asserted_provenance": {
+    "verified_in_browser": false,
+    "lean_toolchain": "leanprover/lean4:v4.28.0",
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "note": "What the public Lean proofs ASSERT about the kernel source. NOT verified in your browser and NOT part of the hash above."
+  },
+  "kernel_config": {
+    "epoch": 1,
+    "safety": {
+      "approval": {
+        "control_file": "X",
+        "ttl_seconds": 120
+      },
+      "tools": [
+        {
+          "name": "db.execute",
+          "mode": "guarded",
+          "match": {
+            "type": "contains_any_ci",
+            "arg": "sql",
+            "needles": [
+              "drop",
+              "delete",
+              "truncate"
+            ]
+          },
+          "target": [
+            {
+              "literal": "db"
+            },
+            {
+              "arg": "database"
+            },
+            {
+              "literal": "write"
+            },
+            {
+              "arg": "sql"
+            }
+          ]
+        },
+        {
+          "name": "payments.send",
+          "mode": "guarded",
+          "match": {
+            "type": "always"
+          },
+          "target": [
+            {
+              "literal": "pay"
+            }
+          ]
+        },
+        {
+          "name": "session.revoke",
+          "mode": "guarded",
+          "match": {
+            "type": "always"
+          },
+          "target": [
+            {
+              "literal": "revoke"
+            }
+          ]
+        },
+        {
+          "name": "store.update",
+          "mode": "guarded",
+          "match": {
+            "type": "always"
+          },
+          "target": [
+            {
+              "literal": "store"
+            }
+          ]
+        },
+        {
+          "name": "key.use",
+          "mode": "guarded",
+          "match": {
+            "type": "always"
+          },
+          "target": [
+            {
+              "literal": "key"
+            }
+          ]
+        },
+        {
+          "name": "approve",
+          "mode": "deny",
+          "match": {
+            "type": "always"
+          },
+          "target": []
+        }
+      ]
+    },
+    "temporal": {
+      "policies": []
+    },
+    "consensus": {
+      "roster": [
+        1,
+        2,
+        3
+      ],
+      "votes_file": "X",
+      "high_stakes": [
+        "payments.send"
+      ]
+    },
+    "convergence": {
+      "tools": [
+        {
+          "tool": "store.update",
+          "op_arg": "op"
+        }
+      ]
+    }
+  },
+  "granted_capabilities": [
+    {
+      "target": "11662918066780758608"
+    }
+  ]
+}

@@ -58,13 +58,9 @@ function parseCall(text) {
   throw new Error('expected a JSON-RPC tools/call, or {"tool","args","approvals"}');
 }
 
-// Build the receipt input block. request_line/now come from the kernel step;
-// approvals come from the parsed call as decimal strings so the u64 targets stay
-// exact in the receipt (JSON.parse of the step would round them).
-function inputBlockFrom(stepStr, call) {
-  const s = JSON.parse(stepStr);
-  return { request_line: s.line, now: s.now, approvals: call.approvals.map(String) };
-}
+// (The v0 input-block builder is gone: schema v1 receipts carry the call as
+// tool/arguments/now/granted_capabilities, and buildReceipt derives the
+// canonical request line itself via the shared receipt-format.js.)
 
 // --- kernel boot + self-verification ----------------------------------------
 async function boot() {
@@ -113,18 +109,19 @@ function paintVerdict(node, denyNode, parsed) {
 // Each row: [field path, clause ref(s), requirement title, value getter]. Documented
 // in docs/SEAL-MEDIATION-PROFILE-L0.md. Both block + allow flow through renderSpec.
 const CLAUSE_MAP = [
-  ["seal_check_receipt", "§4.1", "receipt format version", (r) => r.seal_check_receipt],
-  ["input.request_line", "§4.2 · §2.2", "canonical tools/call (parse witness)", (r) => r.input.request_line],
-  ["input.now", "§4.2 · §5", "logical clock (determinism)", (r) => r.input.now],
-  ["input.approvals", "§4.2 · §3.1", "approval targets (capability)", (r) => JSON.stringify(r.input.approvals)],
+  ["seal_receipt", "§4.1", "receipt schema version (v1)", (r) => r.seal_receipt],
+  ["canonical_request", "§4.2 · §2.2", "canonical tools/call (parse witness)", (r) => r.canonical_request],
+  ["canonical_request_sha256", "§4.2 · §2.2", "request fingerprint (sha256)", (r) => r.canonical_request_sha256.slice(0, 12) + "…"],
+  ["now", "§4.2 · §5", "logical clock (determinism)", (r) => r.now],
+  ["granted_capabilities", "§4.2 · §3.1", "presented grants (approval targets)", (r) => JSON.stringify(r.granted_capabilities)],
   ["verdict", "§2.2 · §2.3", "mediation-contract verdict", (r) => r.verdict],
   ["reason", "§4.3", "decision reason", (r) => r.reason],
   ["deny_kernel", "§4.3 · §3", "denying gate (null if allowed)", (r) => String(r.deny_kernel)],
   ["emitted_bytes", "§2.2 · §4.4", "canonical decision bytes (verbatim)", (r) => `${r.emitted_bytes.length} bytes`],
-  ["witness.certs", "§4.5 · §3", "per-gate seals", (r) => r.witness.certs.map((c) => `${c.kernel}:${c.verdict}`).join(", ") || "—"],
-  ["witness.certs[].certHash", "§4.5", "per-gate FNV seal", (r) => r.witness.certs.map((c) => c.certHash.slice(0, 8) + "…").join(", ") || "—"],
+  ["certs", "§4.5 · §3", "per-gate seals", (r) => r.certs.map((c) => `${c.kernel}:${c.verdict}`).join(", ") || "—"],
+  ["certs[].certHash", "§4.5", "per-gate FNV seal", (r) => r.certs.map((c) => c.certHash.slice(0, 8) + "…").join(", ") || "—"],
   ["kernel_identity.wasm_sha256", "§6.1", "binary identity (self-verified)", (r) => r.kernel_identity.wasm_sha256.slice(0, 12) + "…"],
-  ["kernel_identity.self_verified_in_browser", "§6.1 · §5", "verified in browser", (r) => String(r.kernel_identity.self_verified_in_browser)],
+  ["kernel_identity.self_verified", "§6.1 · §5", "verified in browser", (r) => String(r.kernel_identity.self_verified)],
   ["asserted_provenance.lean_toolchain", "§6.2", "asserted, NOT verified here", (r) => r.asserted_provenance.lean_toolchain],
   ["asserted_provenance.axioms", "§6.2", "asserted axiom footprint", (r) => r.asserted_provenance.axioms.join(", ")],
   ["asserted_provenance.verified_in_browser", "§6.2", "MUST be false", (r) => String(r.asserted_provenance.verified_in_browser)],
@@ -166,8 +163,7 @@ async function runInput() {
   try { res = await decideRaw(CFG_STANDARD, call); }
   catch (e) { $("run-error").textContent = "kernel error: " + e.message; return; }
 
-  const inputBlock = inputBlockFrom(res.step, call);
-  const receipt = buildReceipt({ input: inputBlock, parsed: res.parsed, raw: res.raw, sha: SHA });
+  const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA });
 
   paintVerdict($("verdict"), $("deny-kernel"), res.parsed);
   $("reason").textContent = res.parsed.reason;
@@ -183,7 +179,7 @@ async function runInput() {
     rerun: async () => {
       const r2 = await decideRaw(CFG_STANDARD, call);
       return canonicalReceiptJson(buildReceipt({
-        input: inputBlockFrom(r2.step, call), parsed: r2.parsed, raw: r2.raw, sha: SHA,
+        call, config: CFG_STANDARD, parsed: r2.parsed, raw: r2.raw, sha: SHA,
       }));
     },
   };
@@ -395,6 +391,10 @@ async function maybeRenderDeepLinkedReceipt() {
 
   const a = receipt.arguments || {};
   if (receipt.bypass) return renderControlReceipt(receipt, a);
+  if (r.formatOk === false) {
+    return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +
+      (r.formatErrors || []).join("; "));
+  }
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = receipt.verdict === "BLOCK" ? "REFUSED" : receipt.verdict === "ALLOW" ? "ALLOWED" : (receipt.verdict || "?");
   verdictNode.className = "verdict " + (receipt.verdict === "BLOCK" ? "v-block" : receipt.verdict === "ALLOW" ? "v-allow" : "v-error");

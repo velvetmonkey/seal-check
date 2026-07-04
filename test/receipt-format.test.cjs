@@ -82,6 +82,43 @@ function check(name, got, want) {
   r = F.validateReceipt({ ...byp, kernel_identity: { wasm_sha256: v1ok.kernel_identity.wasm_sha256, self_verified: true } });
   check("validateReceipt rejects bypass with non-null wasm_sha256", r.ok, false);
 
+  // --- §4 hard split (Day-2 ruling: merged identity INVALID in v1, v0-live grandfathered)
+  r = F.validateReceipt({ ...v1ok, kernel_identity: { ...v1ok.kernel_identity, lean_toolchain: "leanprover/lean4:v4.28.0", axioms: [] } });
+  check("hard split: v1 rejects toolchain/axioms inside kernel_identity", r.ok, false);
+  r = F.validateReceipt({ ...v1ok, seal_receipt: undefined, seal_live_receipt: "v0",
+    kernel_identity: { ...v1ok.kernel_identity, lean_toolchain: "leanprover/lean4:v4.28.0", axioms: [] } });
+  check("hard split: v0-live merged identity grandfathered", r.ok, true);
+  r = F.validateReceipt({ ...v1ok, asserted_provenance: { verified_in_browser: true } });
+  check("asserted_provenance.verified_in_browser === true rejected", r.ok, false);
+
+  // --- §3 opaque grant entries + policy recompute
+  r = F.validateReceipt({ ...v1ok, granted_capabilities: [{ target: "11662918066780758608" }] });
+  check("opaque {target} grant entry accepted", JSON.stringify([r.ok, r.errors]), JSON.stringify([true, []]));
+
+  const CFG = { safety: { tools: [
+    { name: "store.update", target: [{ literal: "store" }] },
+    { name: "db.execute", target: [{ arg: "table" }, { arg: "operation" }] },
+  ] } };
+  let g = F.capabilityTargetsFromPolicy(CFG, [{ tool: "store.update" }]);
+  check("recompute literal-target grant (V2)", g.approvals[0].toString(), "11662918066780758608");
+  g = F.capabilityTargetsFromPolicy(CFG, [{ tool: "db.execute", table: "staging_deploy_audit", operation: "insert" }]);
+  check("recompute arg-target grant (V3)", g.approvals[0].toString(), "11517196862591714860");
+  g = F.capabilityTargetsFromPolicy(CFG, [{ target: "42" }]);
+  check("opaque grant used verbatim + counted", JSON.stringify([g.approvals[0].toString(), g.opaque]), JSON.stringify(["42", 1]));
+  g = F.capabilityTargetsFromPolicy(CFG, [{ tool: "db.execute", table: "x" }]);
+  check("missing arg field reported", g.errors.length > 0, true);
+
+  // --- §1 canonical assembly key order (byte-stability seam)
+  const asm = F.assembleReceiptV1({ verdict: "ALLOW", tool: "t", arguments: {}, bypass: false,
+    canonical_request_sha256: "0".repeat(64), reason: "r", deny_kernel: null, certs: [],
+    emitted_bytes: "e", kernel_identity: { wasm_sha256: "0".repeat(64), self_verified: true },
+    kernel_config: {}, granted_capabilities: [] });
+  check("assembleReceiptV1 fixed key order",
+    JSON.stringify(Object.keys(asm)),
+    JSON.stringify(["seal_receipt", "tool", "arguments", "canonical_request_sha256", "bypass",
+      "verdict", "reason", "deny_kernel", "certs", "emitted_bytes", "kernel_identity",
+      "kernel_config", "granted_capabilities"]));
+
   console.log(failures === 0 ? "\nALL VECTORS PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error("ERR", e); process.exit(1); });

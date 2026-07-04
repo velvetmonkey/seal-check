@@ -93,6 +93,62 @@ export function capabilityTarget(tool, parts) {
   return stableHashParts([tool, ...parts]);
 }
 
+// §3 verifier recompute: resolve each granted_capabilities entry to its
+// approval target. Un-hashed entries ({tool, ...fields}) are recomputed from
+// the policy's target spec — {literal} parts come from the POLICY, {arg}
+// parts from the ENTRY's field of that name. Opaque entries ({target}) are
+// grants whose pre-image the producer did not hold; their decimal target is
+// used verbatim (the verifier can re-derive the verdict but cannot check the
+// grant binding — flagged via `opaque`). Returns
+// { approvals: BigInt[], opaque: number, errors: string[] }.
+export function capabilityTargetsFromPolicy(kernelConfig, grants) {
+  const approvals = [], errors = [];
+  let opaque = 0;
+  const tools = (kernelConfig && kernelConfig.safety && kernelConfig.safety.tools) || [];
+  for (const g of grants || []) {
+    if (g && typeof g.target === "string" && /^\d+$/.test(g.target)) {
+      approvals.push(BigInt(g.target)); opaque++; continue;
+    }
+    if (!g || typeof g.tool !== "string") { errors.push("grant entry: need .tool or .target"); continue; }
+    const spec = tools.find((t) => t.name === g.tool);
+    if (!spec || !Array.isArray(spec.target)) {
+      errors.push(`grant entry for ${g.tool}: no policy target spec in kernel_config`); continue;
+    }
+    let bad = null;
+    const parts = spec.target.map((p) => {
+      if (typeof p.literal === "string") return p.literal;
+      if (typeof p.arg === "string") {
+        if (!(p.arg in g)) bad = `grant entry for ${g.tool}: missing field ${p.arg}`;
+        return String(g[p.arg]);
+      }
+      bad = `grant entry for ${g.tool}: unrecognized target-spec part`;
+      return "";
+    });
+    if (bad) { errors.push(bad); continue; }
+    approvals.push(capabilityTarget(g.tool, parts));
+  }
+  return { approvals, opaque, errors };
+}
+
+// §1 canonical assembly: fixed top-level key order so every v1 producer is
+// byte-stable under JSON.stringify (the determinism checks rely on it).
+// Undefined fields are omitted; `bypass` and required fields are the
+// caller's responsibility (validateReceipt enforces them).
+const V1_KEY_ORDER = [
+  "seal_receipt", "tool", "arguments", "now", "canonical_request",
+  "canonical_request_sha256", "bypass", "verdict", "reason", "deny_kernel",
+  "certs", "emitted_bytes", "kernel_identity", "asserted_provenance",
+  "kernel_config", "granted_capabilities", "policy_id", "signature",
+];
+export function assembleReceiptV1(fields) {
+  const r = { seal_receipt: RECEIPT_SCHEMA_VERSION };
+  for (const k of V1_KEY_ORDER) {
+    if (k === "seal_receipt") continue;
+    if (fields[k] !== undefined) r[k] = fields[k];
+  }
+  return r;
+}
+
 // --- §1/§7: shape validation ---------------------------------------------------
 const HEX64 = /^[0-9a-f]{64}$/;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -135,15 +191,33 @@ export function validateReceipt(r) {
     } else if (typeof w !== "string" || !HEX64.test(w)) {
       errors.push("kernel_identity.wasm_sha256: 64-hex string required when mediated");
     }
+    // §4 HARD SPLIT (v1 only; v0-live merged blocks are grandfathered):
+    // identity is the binary hash — asserted provenance lives in its own
+    // block. A v1 kernel_identity carrying toolchain/axioms is INVALID.
+    if (version === "v1") {
+      for (const k of ["lean_toolchain", "axioms"]) {
+        if (k in r.kernel_identity)
+          errors.push(`kernel_identity.${k}: forbidden in v1 (hard split, L0 §6.2) — move to asserted_provenance`);
+      }
+      if (typeof r.kernel_identity.self_verified !== "boolean")
+        errors.push("kernel_identity.self_verified: boolean required in v1");
+    }
   }
+  if (version === "v1" && "asserted_provenance" in r) {
+    if (!isObj(r.asserted_provenance) || r.asserted_provenance.verified_in_browser === true)
+      errors.push("asserted_provenance: object with verified_in_browser !== true required (asserted, never verified)");
+  }
+  if ("now" in r && (!Number.isInteger(r.now) || r.now < 0))
+    errors.push("now: non-negative integer when present");
 
   if (r.bypass === false) {
     if (!isObj(r.kernel_config)) errors.push("kernel_config: object required when mediated");
     if (!Array.isArray(r.certs)) errors.push("certs: array required when mediated");
     if (typeof r.emitted_bytes !== "string") errors.push("emitted_bytes: string required when mediated");
     if (!Array.isArray(r.granted_capabilities) ||
-        !r.granted_capabilities.every((g) => isObj(g) && typeof g.tool === "string"))
-      errors.push("granted_capabilities: array of objects with .tool required when mediated");
+        !r.granted_capabilities.every((g) => isObj(g) &&
+          (typeof g.tool === "string" || (typeof g.target === "string" && /^\d+$/.test(g.target)))))
+      errors.push("granted_capabilities: array of {tool,...} or opaque {target} entries required when mediated");
     if (!("deny_kernel" in r)) errors.push("deny_kernel: required when mediated (string or null)");
   }
 

@@ -11,6 +11,7 @@
 // All decision semantics live inside the compiled wasm; all input/output shaping is
 // reused verbatim from seal-config.js.
 import { buildEnvelope, buildStepInput, parseVerdict, PUBKEY } from "./seal-config.js";
+import { assembleReceiptV1, canonicalRequest, canonicalRequestSha256 } from "./receipt-format.js";
 
 // --- pinned kernel identity (see AUDIT.md) ----------------------------------
 // sha256 of wasm/seal.wasm, computed 2026-06-29. This is THE kernel id and the
@@ -21,7 +22,6 @@ export const KERNEL_WASM_SHA256 = "1cc765c7de2cead88eda2e8e5f5af5a5e070f35a76791
 export const WASM_URL = "wasm/seal.wasm";
 export const LEAN_TOOLCHAIN = "leanprover/lean4:v4.28.0";
 export const KERNEL_AXIOMS = ["propext", "Classical.choice", "Quot.sound"];
-export const RECEIPT_VERSION = "v0";
 
 // --- module singleton (one wasm instance for the whole page) ----------------
 let _mod = null;
@@ -128,22 +128,35 @@ export async function decideSeqRaw(config, steps, tool) {
   return { raw, step, parsed: parseVerdict(raw, tool) };
 }
 
-// --- receipt (two strictly-separate, labelled blocks) -----------------------
-// kernel_identity = binary fact, self-verified. asserted_provenance = proof
-// hygiene the Lean sources claim, NOT verified here and NOT part of the hash.
-// The hash must never read as proving the axioms.
-export function buildReceipt({ input, parsed, raw, sha }) {
-  return {
-    seal_check_receipt: RECEIPT_VERSION,
-    input,
+// --- receipt (schema v1, two strictly-separate, labelled blocks) -------------
+// Emits the canonical v1 decision receipt (normative spec:
+// seal-host/docs/DECISION-RECEIPT-SCHEMA.md) via the shared receipt-format.js
+// seam. kernel_identity = binary fact, self-verified (HARD SPLIT — never
+// carries toolchain/axioms). asserted_provenance = proof hygiene the Lean
+// sources claim, NOT verified here and NOT part of the hash. The hash must
+// never read as proving the axioms.
+//
+// `call` = { tool, args, approvals, now } — the SAME decision inputs fed to
+// the kernel. seal-check's approvals are raw u64 targets (the fire-your-own
+// box accepts arbitrary decimals), so grants are carried as OPAQUE
+// { target } entries per spec §3: the pre-image is not held here, and the
+// receipt says so instead of inventing one.
+export function buildReceipt({ call, config, parsed, raw, sha }) {
+  return assembleReceiptV1({
+    tool: call.tool,
+    arguments: call.args,
+    now: call.now ?? 1000,
+    canonical_request: canonicalRequest(call.tool, call.args),
+    canonical_request_sha256: canonicalRequestSha256(call.tool, call.args),
+    bypass: false,
     verdict: parsed.verdict === "DENY" ? "BLOCK" : parsed.verdict, // ALLOW | BLOCK | ERROR
     reason: parsed.reason,
     deny_kernel: parsed.deny_kernel ?? null,
+    certs: parsed.certs, // per-gate seals (FNV-1a 64-bit certHashes, decimal strings)
     emitted_bytes: raw, // verbatim canonical seal_decide output — the decision bytes
-    witness: { certs: parsed.certs }, // per-gate seals (FNV-1a 64-bit certHashes)
     kernel_identity: {
       wasm_sha256: sha.computed,
-      self_verified_in_browser: sha.match,
+      self_verified: sha.match,
       note:
         "Binary identity of the evaluator actually executed. Hashed in your browser " +
         "from the loaded bytes and compared to a pinned constant. This is the ONLY " +
@@ -157,7 +170,9 @@ export function buildReceipt({ input, parsed, raw, sha }) {
         "What the public Lean proofs ASSERT about the kernel source. NOT verified in " +
         "your browser and NOT part of the hash above.",
     },
-  };
+    kernel_config: config,
+    granted_capabilities: (call.approvals || []).map((t) => ({ target: String(t) })),
+  });
 }
 
 // Deterministic serialization: object key order is fixed by construction above,

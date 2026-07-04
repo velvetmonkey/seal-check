@@ -29,14 +29,17 @@ const SealModule = globalThis.SealModule;
   const M = await SealModule({ locateFile: (p) => path.join(ROOT, "wasm", p), print() {}, printErr() {} });
   const sha = { computed: K.KERNEL_WASM_SHA256, pinned: K.KERNEL_WASM_SHA256, match: true };
 
-  const decide = (config, { tool, args, approvals = [] }) => {
+  const F = await import(path.join(ROOT, "receipt-format.js"));
+
+  const decide = (config, call) => {
+    const { tool, args, approvals = [] } = call;
     const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [cfg.buildEnvelope(config), cfg.PUBKEY]));
     if (ir.ok !== true) throw new Error("seal_init failed");
     const step = cfg.buildStepInput({ tool, args, approvals });
     const raw = M.ccall("seal_decide", "string", ["string"], [step]);
-    const s = JSON.parse(step);
-    const input = { request_line: s.line, now: s.now, approvals: approvals.map(String) };
-    return K.canonicalReceiptJson(K.buildReceipt({ input, parsed: cfg.parseVerdict(raw, tool), raw, sha }));
+    return K.canonicalReceiptJson(K.buildReceipt({
+      call: { tool, args, approvals }, config, parsed: cfg.parseVerdict(raw, tool), raw, sha,
+    }));
   };
 
   const block = decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
@@ -45,11 +48,21 @@ const SealModule = globalThis.SealModule;
   const expectSha = "1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a";
   let ok = true;
   const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`); ok = ok && cond; };
-  check("block verdict = BLOCK", JSON.parse(block).verdict === "BLOCK");
-  check("allow verdict = ALLOW", JSON.parse(allow).verdict === "ALLOW");
-  check("block receipt = 2062 bytes", block.length === 2062);
-  check("kernel sha pinned", JSON.parse(block).kernel_identity.wasm_sha256 === expectSha);
-  check("asserted_provenance NOT verified", JSON.parse(allow).asserted_provenance.verified_in_browser === false);
+  const blockR = JSON.parse(block), allowR = JSON.parse(allow);
+  check("block verdict = BLOCK", blockR.verdict === "BLOCK");
+  check("allow verdict = ALLOW", allowR.verdict === "ALLOW");
+  check("schema v1 discriminator", blockR.seal_receipt === "v1" && allowR.seal_receipt === "v1");
+  check("validateReceipt: both receipts well-formed v1",
+    F.validateReceipt(blockR).ok && F.validateReceipt(allowR).ok);
+  check("hard split: kernel_identity carries no toolchain/axioms",
+    !("lean_toolchain" in blockR.kernel_identity) && !("axioms" in blockR.kernel_identity));
+  check("canonical_request_sha256 = derived from (tool, arguments)",
+    blockR.canonical_request_sha256 === F.canonicalRequestSha256(blockR.tool, blockR.arguments));
+  check("kernel sha pinned", blockR.kernel_identity.wasm_sha256 === expectSha);
+  check("asserted_provenance NOT verified", allowR.asserted_provenance.verified_in_browser === false);
+  check("opaque grant carried for raw-target approval",
+    allowR.granted_capabilities.length === 1 &&
+    allowR.granted_capabilities[0].target === cfg.stableHash(["store.update", "store"]).toString());
   // determinism: re-run identical input -> byte-identical receipt
   const block2 = decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
   check("determinism: block == block2 (byte-identical)", block === block2);

@@ -96,6 +96,17 @@ appear (or matter) in `witness.certs`.
 
 ## §4 Decision-receipt schema (canonical)
 
+> **SUPERSEDED (2026-07-04) — schema v1.** The receipt format described in
+> this section (`seal_check_receipt: "v0"`, Schema K) is retired. The widget
+> now emits the family-wide canonical **schema v1** receipt
+> (`seal_receipt: "v1"`), normatively specified in
+> `seal-host/docs/DECISION-RECEIPT-SCHEMA.md`, implemented by the shared
+> `receipt-format.js`. The v1 schema preserves this section's separation
+> discipline — §6.2's identity/provenance split is now HARD (a v1
+> `kernel_identity` carrying toolchain/axioms is invalid). This section is
+> kept for the historical record of the v0 profile; the field-by-field
+> documentation below describes receipts produced before the migration.
+
 The canonical receipt is a JSON object. Below, every field is documented with its
 type. The widget emits exactly this object — no more, no fewer, top-level keys. A
 real, byte-exact BLOCK receipt is shown at the end of this section.
