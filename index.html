@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>seal-check — is your MCP boundary actually mediated?</title>
+  <title>seal-check: is your MCP boundary actually mediated?</title>
   <meta name="description" content="Paste an MCP tool-call, get a deterministic Allow/Block verdict and a reproducible receipt from the verified seal kernel, entirely in your browser. No backend, no data leaves the page." />
   <link rel="stylesheet" href="style.css" />
   <!-- classic script installs window.SealModule (the compiled black-box kernel) -->
@@ -15,7 +15,7 @@
     <h1>seal-check</h1>
     <p class="tag">Is your MCP boundary <em>actually</em> mediated? Paste a tool-call, get a deterministic
       <strong>Allow / Block</strong> verdict and a reproducible receipt from the verified
-      <strong>seal</strong> kernel — running entirely in your browser.</p>
+      <strong>seal</strong> kernel, running entirely in your browser.</p>
     <div id="kernel-status" class="pill pill-wait" title="Binary identity of the kernel running in your browser">
       checking kernel…
     </div>
@@ -46,7 +46,7 @@
     <!-- 1. CHECK A CALL ----------------------------------------------------->
     <section id="check">
       <h2>1 · Check a call</h2>
-      <p class="muted">Paste an MCP tool-call as JSON — either a JSON-RPC <code>tools/call</code> or a simple
+      <p class="muted">Paste an MCP tool-call as JSON, either a JSON-RPC <code>tools/call</code> or a simple
         <code>{ "tool", "args", "approvals" }</code> object. It runs against a standard multi-kernel policy.</p>
       <div class="examples">
         <button class="ex" data-ex="block">Load a blocked example</button>
@@ -66,7 +66,7 @@
         <p id="reason" class="reason"></p>
 
         <details id="witness-wrap" open>
-          <summary>Parse witness — per-gate seals (<span id="cert-count">0</span>)</summary>
+          <summary>Parse witness: per-gate seals (<span id="cert-count">0</span>)</summary>
           <table id="witness"><thead><tr><th>kernel</th><th>verdict</th><th>reason</th><th>certHash</th></tr></thead><tbody></tbody></table>
         </details>
 
@@ -96,7 +96,7 @@
     <section id="badge-sec">
       <h2>3 · "seal-checked boundary" badge</h2>
       <p class="muted">A self-contained badge carrying the kernel's short sha256. It records that a call was
-        checked against this verified kernel binary — nothing more (see panel below).</p>
+        checked against this verified kernel binary, nothing more (see panel below).</p>
       <div id="badge-preview" class="badge-preview"></div>
       <div class="row">
         <button id="copy-badge-svg">Copy badge (SVG)</button>
@@ -111,20 +111,20 @@
       <p class="muted">Each field of the receipt above, mapped to the profile clause it satisfies.
         Run a call in section 1 to populate it. Spec:
         <a href="docs/SEAL-MEDIATION-PROFILE-L0.md">docs/SEAL-MEDIATION-PROFILE-L0.md</a>.</p>
-      <p id="spec-empty" class="muted">— run a call above to map its receipt to the profile —</p>
+      <p id="spec-empty" class="muted">Run a call above to map its receipt to the profile.</p>
       <table id="spec-map" class="hidden"><thead><tr><th>receipt field</th><th>value</th><th>clause</th><th>requirement</th></tr></thead><tbody></tbody></table>
     </section>
 
     <!-- 5. CLAIM DISCIPLINE (always visible) -------------------------------->
     <section id="claims">
-      <h2>What this proves — and what it does not</h2>
+      <h2>What this proves, and what it does not</h2>
       <div class="claim-grid">
         <div class="claim proves">
           <h3>✓ What this proves</h3>
           <p>For the exact call you supplied, this is the deterministic Allow/Block decision produced by the
             seal mediation kernel whose binary <code>sha256</code> is shown above, executed in your browser.
             That kernel's decision logic is the subject of public Lean&nbsp;4 proofs that assert the stated
-            mediation properties — <em>modulo their stated assumptions and the axioms
+            mediation properties, <em>modulo their stated assumptions and the axioms
             {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Same input → byte-identical receipt, every
             reload. Nothing leaves your browser.</p>
         </div>
@@ -132,8 +132,8 @@
           <h3>✗ What this does NOT prove</h3>
           <p>It does not certify your whole MCP server, your transport, your tool implementations, or that your
             deployment actually routes calls through this gate. The <code>sha256</code> verifies <em>which binary
-            ran</em> — it does <strong>not</strong> prove the axioms or the Lean proofs themselves. No third party
-            certifies anything here. In particular <strong>ARIA certifies nothing</strong> — no ARIA endorsement,
+            ran</em>. It does <strong>not</strong> prove the axioms or the Lean proofs themselves. No third party
+            certifies anything here. In particular <strong>ARIA certifies nothing</strong>, no ARIA endorsement,
             outcome, affiliation, or status is claimed or implied. This is not an endorsement and not a
             trustworthiness badge for your server.</p>
         </div>
