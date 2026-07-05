@@ -142,8 +142,12 @@ Evidence is of two kinds, and the distinction is deliberate:
 - A **wasm-vs-model differential harness** drives identical inputs through the
   deployed `seal.wasm` and the proven model and checks for identical verdicts.
   This is *risk-reducing evidence* for the wasm-equals-model identity (§2), not
-  a proof of it. It is under construction; no result from it is cited here until
-  it is demonstrably green.
+  a proof of it. Status: green (2026-07-02), 13/13 mediation-corpus adversarial
+  cases (delete-command disguises, structural JSON manglings, `\u`-escaped forms)
+  agree and Block across the emscripten wasm and the natively-compiled model,
+  with 0 disagreements. Scope is the mediation corpus, not exhaustive over all
+  inputs. The harness lives in the private integration repository; the result is
+  attested and available to reviewers on request.
 
 ---
 
@@ -161,5 +165,6 @@ For each publicly re-runnable claim, the artefact that backs it:
 | Determinism: same input ⇒ byte-identical receipt | receipt harness | `node test/receipt-harness.cjs` |
 
 Host-bridge and wasm-vs-model evidence is attested and available to reviewers on
-request; it is not part of this public artefact, and the wasm-vs-model result is
-not cited until the differential harness is green.
+request; it is not part of this public artefact. The wasm-vs-model differential
+is green as of 2026-07-02 (13/13 mediation corpus, 0 disagreements); it remains
+*risk-reducing evidence* for the trusted-compile identity, never a proof of it.
