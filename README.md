@@ -1,99 +1,69 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-# seal-check `v0`
+# seal-check
 
-![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+A static browser verifier for Seal decisions and receipts. **Role:** Don't trust. Verify.
+
 ![Runtime](https://img.shields.io/badge/runtime-WebAssembly-654ff0)
-![Checks](https://img.shields.io/badge/checks-SEAL--MEDIATION--PROFILE-informational)
+![Verifier](https://img.shields.io/badge/verifier-browser-informational)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-**Is your MCP boundary _actually_ mediated?** Paste an MCP tool-call, get a
-deterministic **Allow / Block** verdict and a reproducible **receipt** from the
-verified **seal** kernel — running entirely in your browser.
+**Seal is a proven checkpoint for AI agents.** When an AI agent tries to use a real tool over MCP — send money, delete a record, call an external service — Seal stands in the way and asks one question: did a human explicitly approve *this exact request*? No matching approval, no action. Every decision is written into a tamper-evident record you can check yourself. What makes Seal different from other guardrails: the core mediation rules aren't just tested — they're machine-checked theorems in Lean 4. The same decision logic then runs byte-for-byte in the Rust host you deploy, in the browser, and in the checker, each verified against that one proven rulebook.
 
-seal-check is the L0 adoption wedge for [seal](https://github.com/velvetmonkey/mcp-seal),
-a Lean-4-verified MCP mediation gate. It is a single static page:
-**no backend, no accounts, no telemetry — nothing you paste leaves the page.**
+That is the product line in one sentence: prove the rulebook, then check every body that runs it. Seal is built around MCP because MCP is where agent intent becomes an external effect. The proof says what the kernel must do; the conformance tests show that the Rust, wasm, and JavaScript artifacts used by the product family emit the same decisions and records over the shared corpus.
 
-> **Status: private / local build.** The compiled kernel has not been published. Run
-> it locally (below). The public flip is a separate, explicitly-authorised step — see
-> [AUDIT.md](AUDIT.md).
+## What happens when someone hands you a decision receipt
 
-## Run it
+Paste a call or load a receipt. The page hashes its bundled wasm, checks the pinned identity, re-runs the same kernel, and compares the emitted bytes. It also mirrors the target commitment in JavaScript: code-point-count netstrings, UTF-8 bytes, SHA-256, lowercase hex.
 
-WASM needs an HTTP origin (`file://` is blocked). A secure context (`https`,
-`localhost`, `127.0.0.1`) uses native SubtleCrypto for the self-verify; any other
-http origin (e.g. a LAN hostname) falls back to a bundled pure-JS SHA-256.
+Nothing you paste leaves the page. The page verifies a decision artifact; it does not certify that your whole deployment is correctly wired through Seal.
+
+## For evaluators and auditors
+
+Seal's proof story is intentionally narrow. The Lean theorems cover the mediation kernel and selected model properties. The binaries and browser artifacts are connected to that proof by reproducible conformance tests, not by a theorem about every compiled instruction.
+
+Start with [docs/PROOF-REFERENCE.md](docs/PROOF-REFERENCE.md) for theorem names and file locations, [docs/CONFORMANCE.md](docs/CONFORMANCE.md) for the byte-identity claim, and [docs/TCB.md](docs/TCB.md) for what remains trusted.
+
+Mandatory non-claims:
+
+- Seal proves properties of the mediation KERNEL, not of the whole deployed system.
+- Seal does NOT prove SHA-256 collision resistance in Lean; it is a named, scoped cryptographic assumption (A-CR).
+- The deployed Rust / wasm / JS are NOT proven bug-free; they are tied to the proof by byte-exact conformance testing over a corpus, not for every possible input.
+- Seal guarantees AUTHORIZATION match, not INTENT match: if a human approves a malicious-but-valid request, Seal will execute it.
+- Seal does NOT prevent compromise of hosts, browsers, build systems, keys, operators, or downstream tools.
+- Seal's audit chain is tamper-EVIDENT, not tamper-IMPOSSIBLE.
+- Seal does NOT make the AI smarter or prevent hallucinations; it stops an unapproved effect.
+- Axiom footprint {propext, Classical.choice, Quot.sound} is the minimal classical fragment; no extra axioms.
+
+## Verify in five minutes
 
 ```sh
-cd ~/src/seal-check
 python3 -m http.server 8000
-# open http://localhost:8000   (or http://<host>:8000 on the box)
+# open http://localhost:8000
+node test/receipt-format.test.cjs
+node test/receipt-harness.cjs
+node test/cross-receipt.test.cjs
 ```
 
-## What the page does
+## The Seal family
 
-1. **Check a call** — paste a JSON-RPC `tools/call` (or a simple
-   `{ "tool", "args", "approvals" }`); it runs against a standard multi-kernel policy
-   and shows `ALLOW` / `BLOCK`, the deny gate, the per-gate witness, and a **decision
-   receipt** (verbatim emitted bytes + parse witness + pinned kernel `sha256`). The
-   receipt downloads and is **byte-identical for the same input, every reload**.
-2. **Replay known attacks** — five named bypass / parser-differential /
-   stale-capability traces that the live kernel deterministically **blocks**
-   (destructive SQL, self-approval, missing-quorum payment, non-convergent store
-   write, stale-capability-after-revoke). "Replay all" → `5/5 blocked`.
-3. **Badge** — a copyable "seal-checked boundary" badge (SVG or Markdown) carrying the
-   kernel's short sha.
-4. **Conformance map** — maps each live receipt field to the clause it satisfies in
-   [SEAL-MEDIATION-PROFILE-L0](docs/SEAL-MEDIATION-PROFILE-L0.md).
+- [seal](https://github.com/velvetmonkey/seal) — the private umbrella story, product map, and evaluator path.
+- [mcp-seal-dev](https://github.com/velvetmonkey/mcp-seal-dev) — The rulebook, proven.
+- [seal-host](https://github.com/velvetmonkey/seal-host) — The guard at the door.
+- [seal-check](https://github.com/velvetmonkey/seal-check) — Don't trust. Verify.
+- [seal-live-demo](https://github.com/velvetmonkey/seal-live-demo) — Watch it work.
+- [seal-assurance-kit](https://github.com/velvetmonkey/seal-assurance-kit) — Check your own boundary.
 
-## What this proves — and what it does not
+## Documentation
 
-**Proves:** for the exact call you supplied, this is the deterministic Allow/Block
-decision produced by the seal kernel whose binary `sha256` is shown, executed in your
-browser, whose decision logic is the subject of public Lean 4 proofs (modulo their
-stated assumptions and axioms). Same input → byte-identical receipt.
-
-**Does NOT prove:** it does not certify your whole MCP server, transport, tool
-implementations, or that your deployment routes calls through the gate. The sha256
-verifies *which binary ran* — not the axioms or the proofs. No third party certifies
-anything here; **ARIA certifies nothing** — no endorsement, outcome, or affiliation is
-claimed or implied.
-
-**Profile:** seal's deployed host mediates under the `compatible` profile, not strict
-canonical-l0 (see seal-host CLAIMS.md); the canonical AST is audit input to the kernels,
-not the mediation gate.
-
-## Kernel identity
-
-| | |
-|---|---|
-| **wasm sha256** | `ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0` — **self-verified in browser** against a pinned constant |
-| **lean toolchain** | `leanprover/lean4:v4.28.0` — *asserted provenance, not verified here* |
-| **axiom footprint** | `propext` · `Classical.choice` · `Quot.sound` — *asserted, not verified here* |
-
-The sha256 is the only thing verified at decision time. Toolchain and axioms are what
-the public proofs **assert** about the source; they are disclosed as a separate,
-clearly-labelled block and are never blended into the hash. Full rules:
-[SEAL-MEDIATION-PROFILE-L0 §6](docs/SEAL-MEDIATION-PROFILE-L0.md).
-
-## Architecture
-
-Vanilla JS, no build step. The runtime is the static page only.
-
-| File | Role |
-|---|---|
-| `wasm/seal.{js,wasm}` | compiled black-box kernel (emscripten; symbols `seal_init`, `seal_decide`) |
-| `seal-config.js` | input/output shaping + scenario configs (reused, public) |
-| `seal-wasm.js` | upstream adapter, kept for provenance reference |
-| `kernel.js` | raw-byte capture, in-browser sha256 self-verify (+ JS fallback), receipt builder |
-| `corpus.js` | the five named attack traces (data only) |
-| `app.js`, `index.html`, `style.css` | UI |
-| `docs/SEAL-MEDIATION-PROFILE-L0.md` | the L0 conformance profile |
-| `test/receipt-harness.cjs` | **TEST-ONLY** — reproduces receipts under Node; not part of the runtime |
-
-IP boundary and the binary audit / publish gate are documented in [AUDIT.md](AUDIT.md).
-seal-check bundles only public artifacts; it never references the private seal kernel
-development repos.
+- [Architecture](docs/ARCHITECTURE.md)
+- [Threat model](docs/THREAT-MODEL.md)
+- [Assumptions](docs/ASSUMPTIONS.md)
+- [Proof reference](docs/PROOF-REFERENCE.md)
+- [Conformance](docs/CONFORMANCE.md)
+- [Trusted computing base](docs/TCB.md)
+- [Glossary](docs/GLOSSARY.md)
+- [Limitations](docs/LIMITATIONS.md)
+- [Security policy](SECURITY.md)
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache-2.0. See [LICENSE](LICENSE).
