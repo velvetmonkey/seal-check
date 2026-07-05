@@ -1,6 +1,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # seal-check `v0`
 
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![Runtime](https://img.shields.io/badge/runtime-WebAssembly-654ff0)
+![Checks](https://img.shields.io/badge/checks-SEAL--MEDIATION--PROFILE-informational)
+
 **Is your MCP boundary _actually_ mediated?** Paste an MCP tool-call, get a
 deterministic **Allow / Block** verdict and a reproducible **receipt** from the
 verified **seal** kernel — running entirely in your browser.
