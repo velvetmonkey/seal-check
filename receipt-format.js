@@ -77,13 +77,17 @@ export function canonicalRequestSha256(tool, args) {
 }
 
 // --- §3: capability targets --------------------------------------------------
-// Exact mirror of Lean Seal.Hash.stableHashParts (same algorithm as
-// seal-config.js stableHash — consolidated here as the canonical copy).
+// Exact mirror of Lean Seal.stableHashParts: SHA-256 over the injective
+// netstring encoding used by Seal.encodeParts.
+export function encodeParts(parts) {
+  return parts.map((s) => {
+    const p = String(s);
+    return `${[...p].length}:${p}`;
+  }).join("");
+}
+
 export function stableHashParts(parts) {
-  let acc = 14695981039346656037n;
-  const M = 1099511628211n, MOD = 1n << 64n;
-  for (const ch of parts.join("|")) acc = (acc * M + BigInt(ch.codePointAt(0))) % MOD;
-  return acc;
+  return sha256Hex(new TextEncoder().encode(encodeParts(parts)));
 }
 
 // THE pinned convention: target = stableHashParts([tool, ...parts]) where
@@ -97,17 +101,17 @@ export function capabilityTarget(tool, parts) {
 // approval target. Un-hashed entries ({tool, ...fields}) are recomputed from
 // the policy's target spec — {literal} parts come from the POLICY, {arg}
 // parts from the ENTRY's field of that name. Opaque entries ({target}) are
-// grants whose pre-image the producer did not hold; their decimal target is
+// grants whose pre-image the producer did not hold; their 64-hex target is
 // used verbatim (the verifier can re-derive the verdict but cannot check the
 // grant binding — flagged via `opaque`). Returns
-// { approvals: BigInt[], opaque: number, errors: string[] }.
+// { approvals: string[], opaque: number, errors: string[] }.
 export function capabilityTargetsFromPolicy(kernelConfig, grants) {
   const approvals = [], errors = [];
   let opaque = 0;
   const tools = (kernelConfig && kernelConfig.safety && kernelConfig.safety.tools) || [];
   for (const g of grants || []) {
-    if (g && typeof g.target === "string" && /^\d+$/.test(g.target)) {
-      approvals.push(BigInt(g.target)); opaque++; continue;
+    if (g && typeof g.target === "string" && HEX64.test(g.target)) {
+      approvals.push(g.target); opaque++; continue;
     }
     if (!g || typeof g.tool !== "string") { errors.push("grant entry: need .tool or .target"); continue; }
     const spec = tools.find((t) => t.name === g.tool);
@@ -216,7 +220,7 @@ export function validateReceipt(r) {
     if (typeof r.emitted_bytes !== "string") errors.push("emitted_bytes: string required when mediated");
     if (!Array.isArray(r.granted_capabilities) ||
         !r.granted_capabilities.every((g) => isObj(g) &&
-          (typeof g.tool === "string" || (typeof g.target === "string" && /^\d+$/.test(g.target)))))
+          (typeof g.tool === "string" || (typeof g.target === "string" && HEX64.test(g.target)))))
       errors.push("granted_capabilities: array of {tool,...} or opaque {target} entries required when mediated");
     if (!("deny_kernel" in r)) errors.push("deny_kernel: required when mediated (string or null)");
   }

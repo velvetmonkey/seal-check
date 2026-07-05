@@ -6,22 +6,13 @@
 // Each scenario carries the exact trusted-config + tool call that reproduces the
 // verified verdict the demo narrates. Cert hashes are emitted by the kernel, not
 // encoded here.
+import { stableHashParts } from "./receipt-format.js";
 
 export const PUBKEY = "demo-pk";
 
-// FNV-style hash, exact mirror of Seal.Hash.stableHashParts (for approval targets).
+// SHA-256 target commitment, exact mirror of Lean Seal.stableHashParts.
 export function stableHash(parts) {
-  let acc = 14695981039346656037n;
-  const M = 1099511628211n, MOD = 1n << 64n;
-  for (const ch of parts.join("|")) acc = (acc * M + BigInt(ch.codePointAt(0))) % MOD;
-  return acc;
-}
-
-// u64 targets exceed Number.MAX_SAFE_INTEGER -> serialize BigInt as exact JSON
-// integer literals (sentinel + strip quotes) so Lean's getNat reads them precisely.
-function stringifyBig(obj) {
-  return JSON.stringify(obj, (_k, v) => (typeof v === "bigint" ? `__BIG__${v}__BIG__` : v))
-    .replace(/"__BIG__(\d+)__BIG__"/g, "$1");
+  return stableHashParts(parts);
 }
 
 export function buildEnvelope(payload, pubkey = PUBKEY) {
@@ -83,7 +74,7 @@ const rpc = (tool, args, id = 1) => JSON.stringify({ jsonrpc: "2.0", id, method:
 // `{"acceptor":<nat>,"value":"<tool>"}`); default "" is byte-identical to before, so
 // existing scenarios/conformance are unaffected.
 export function buildStepInput({ tool, args, approvals = [], now = 1000, votes = "", id = 1 }) {
-  return stringifyBig({ line: rpc(tool, args, id), now,
+  return JSON.stringify({ line: rpc(tool, args, id), now,
     approvals: approvals.map((t) => ({ target: t })), votes, grants: "", forecasts: "" });
 }
 

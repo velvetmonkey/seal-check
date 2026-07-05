@@ -15,8 +15,7 @@ let SHA = null;       // {computed, pinned, match}
 let LOCKED = false;   // true if kernel mismatch — refuse to emit receipts
 let LAST = null;      // {decide:()=>Promise, inputBlock} for the determinism re-run
 
-// --- examples (raw strings: approval targets are u64 and must not pass through
-// JSON.stringify, which would mangle them past Number.MAX_SAFE_INTEGER) ---------
+// --- examples ---------------------------------------------------------------
 const EXAMPLES = {
   block: `{
   "tool": "db.execute",
@@ -26,21 +25,19 @@ const EXAMPLES = {
   allow: `{
   "tool": "store.update",
   "args": { "op": "orset.add", "key": "k1" },
-  "approvals": [${stableHash(["store.update", "store"]).toString()}]
+  "approvals": ["${stableHash(["store.update", "store"])}"]
 }`,
 };
 
 // --- input parsing -----------------------------------------------------------
-// Approval targets are u64 hashes that exceed Number.MAX_SAFE_INTEGER, so JSON.parse
-// would silently round them. Read them straight from the raw text as BigInt instead.
-function parseApprovalsRaw(text) {
-  const m = text.match(/"approvals"\s*:\s*\[([\s\S]*?)\]/);
-  if (!m) return null;
-  const inner = m[1].trim();
-  if (!inner) return [];
-  return inner.split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
-    if (!/^\d+$/.test(s)) throw new Error("approval targets must be integer hashes, got: " + s);
-    return BigInt(s);
+function parseApprovals(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw new Error("approvals must be an array of 64-hex target strings");
+  return value.map((s) => {
+    if (typeof s !== "string" || !/^[0-9a-f]{64}$/.test(s)) {
+      throw new Error("approval targets must be lowercase 64-hex strings, got: " + JSON.stringify(s));
+    }
+    return s;
   });
 }
 
@@ -48,11 +45,12 @@ function parseApprovalsRaw(text) {
 function parseCall(text) {
   let o;
   try { o = JSON.parse(text); } catch (e) { throw new Error("not valid JSON: " + e.message); }
-  const approvals = parseApprovalsRaw(text) || [];
   if (o && o.method === "tools/call" && o.params) {
+    const approvals = parseApprovals(o.approvals);
     return { tool: o.params.name, args: o.params.arguments || {}, approvals, now: 1000 };
   }
   if (o && typeof o.tool === "string") {
+    const approvals = parseApprovals(o.approvals);
     return { tool: o.tool, args: o.args || {}, approvals, now: o.now ?? 1000 };
   }
   throw new Error('expected a JSON-RPC tools/call, or {"tool","args","approvals"}');

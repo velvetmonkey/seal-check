@@ -14,11 +14,11 @@ import { buildEnvelope, buildStepInput, parseVerdict, PUBKEY } from "./seal-conf
 import { assembleReceiptV1, canonicalRequest, canonicalRequestSha256 } from "./receipt-format.js";
 
 // --- pinned kernel identity (see AUDIT.md) ----------------------------------
-// sha256 of wasm/seal.wasm, computed 2026-06-29. This is THE kernel id and the
+// sha256 of wasm/seal.wasm, computed 2026-07-05. This is THE kernel id and the
 // ONLY thing seal-check verifies in the browser. Toolchain + axioms below are
 // LABELLED provenance the public Lean proofs assert — NOT verified here, NOT
 // blended into the hash.
-export const KERNEL_WASM_SHA256 = "1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a";
+export const KERNEL_WASM_SHA256 = "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0";
 export const WASM_URL = "wasm/seal.wasm";
 export const LEAN_TOOLCHAIN = "leanprover/lean4:v4.28.0";
 export const KERNEL_AXIOMS = ["propext", "Classical.choice", "Quot.sound"];
@@ -137,8 +137,8 @@ export async function decideSeqRaw(config, steps, tool) {
 // never read as proving the axioms.
 //
 // `call` = { tool, args, approvals, now } — the SAME decision inputs fed to
-// the kernel. seal-check's approvals are raw u64 targets (the fire-your-own
-// box accepts arbitrary decimals), so grants are carried as OPAQUE
+// the kernel. seal-check's approvals are raw 64-hex targets (the fire-your-own
+// box accepts arbitrary target commitments), so grants are carried as OPAQUE
 // { target } entries per spec §3: the pre-image is not held here, and the
 // receipt says so instead of inventing one.
 export function buildReceipt({ call, config, parsed, raw, sha }) {

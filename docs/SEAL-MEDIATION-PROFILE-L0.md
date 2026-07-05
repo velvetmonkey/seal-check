@@ -120,8 +120,7 @@ The decided call, normalized.
 - `now` (integer) — the **caller-supplied logical clock** for the decision. It is NOT
   wall-clock time (see §5).
 - `approvals` (array of string) — the approval target hashes presented with the call,
-  as **decimal strings** (the targets are u64 and exceed JSON's safe-integer range, so
-  they MUST be carried as strings, not numbers).
+  as lowercase **64-hex SHA-256 target commitments**.
 
 ### §4.3 `verdict` / `reason` / `deny_kernel`
 - `verdict` (string, MUST) — `ALLOW` | `BLOCK` | `ERROR` (§2.3).
@@ -196,7 +195,7 @@ Provenance the public Lean proofs **assert** about the kernel source. This block
     ]
   },
   "kernel_identity": {
-    "wasm_sha256": "1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a",
+    "wasm_sha256": "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0",
     "self_verified_in_browser": true,
     "note": "Binary identity of the evaluator actually executed. Hashed in your browser from the loaded bytes and compared to a pinned constant. This is the ONLY thing verified here."
   },

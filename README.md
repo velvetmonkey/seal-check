@@ -62,7 +62,7 @@ not the mediation gate.
 
 | | |
 |---|---|
-| **wasm sha256** | `1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a` — **self-verified in browser** against a pinned constant |
+| **wasm sha256** | `ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0` — **self-verified in browser** against a pinned constant |
 | **lean toolchain** | `leanprover/lean4:v4.28.0` — *asserted provenance, not verified here* |
 | **axiom footprint** | `propext` · `Classical.choice` · `Quot.sound` — *asserted, not verified here* |
 

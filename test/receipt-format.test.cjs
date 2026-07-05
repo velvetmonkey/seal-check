@@ -42,13 +42,13 @@ function check(name, got, want) {
     "460d746ba064ab9398885158dddfd6d32f1722b0efe0d3b6085c8441e9127793");
 
   // --- §3: capability-target convention [tool, ...policy parts]
-  check("V2 store.update literal grant", F.capabilityTarget("store.update", ["store"]).toString(), "11662918066780758608");
-  check("V2b payments.send literal grant", F.capabilityTarget("payments.send", ["pay"]).toString(), "2693940768235235512");
+  check("V2 store.update literal grant", F.capabilityTarget("store.update", ["store"]), "6bff1759cf3c00f781f0b15d428f4cf84e59f8b10be48dd4dd742175a3e6f984");
+  check("V2b payments.send literal grant", F.capabilityTarget("payments.send", ["pay"]), "e35dd14f3e1d02fec3b03a781b7f8928bfd1ce7b7f93a23a7b61228c536bd73a");
   check("V3 live-demo arg-selected grant",
-    F.capabilityTarget("db.execute", ["staging_deploy_audit", "insert"]).toString(), "11517196862591714860");
+    F.capabilityTarget("db.execute", ["staging_deploy_audit", "insert"]), "351f47a44bcf935c7242432e24bd11db1536d7c1da873f0ca953c8b80ae02433");
   check("capabilityTarget == stableHashParts([tool, ...parts])",
-    F.capabilityTarget("db.execute", ["a", "b"]).toString(),
-    F.stableHashParts(["db.execute", "a", "b"]).toString());
+    F.capabilityTarget("db.execute", ["a", "b"]),
+    F.stableHashParts(["db.execute", "a", "b"]));
 
   // --- §1: shape validation
   const v1ok = {
@@ -57,7 +57,7 @@ function check(name, got, want) {
     canonical_request_sha256: F.canonicalRequestSha256("db.execute", v1args),
     bypass: false, verdict: "ALLOW", reason: "every gating kernel allows", deny_kernel: null,
     certs: [], emitted_bytes: "{}",
-    kernel_identity: { wasm_sha256: "1cc765c7de2cead88eda2e8e5f5af5a5e070f35a767916e754b873733562c70a", self_verified: true },
+    kernel_identity: { wasm_sha256: "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0", self_verified: true },
     kernel_config: { epoch: 1 },
     granted_capabilities: [{ tool: "db.execute", table: "staging_deploy_audit", operation: "insert" }],
   };
@@ -92,7 +92,7 @@ function check(name, got, want) {
   check("asserted_provenance.verified_in_browser === true rejected", r.ok, false);
 
   // --- §3 opaque grant entries + policy recompute
-  r = F.validateReceipt({ ...v1ok, granted_capabilities: [{ target: "11662918066780758608" }] });
+  r = F.validateReceipt({ ...v1ok, granted_capabilities: [{ target: "6bff1759cf3c00f781f0b15d428f4cf84e59f8b10be48dd4dd742175a3e6f984" }] });
   check("opaque {target} grant entry accepted", JSON.stringify([r.ok, r.errors]), JSON.stringify([true, []]));
 
   const CFG = { safety: { tools: [
@@ -100,11 +100,11 @@ function check(name, got, want) {
     { name: "db.execute", target: [{ arg: "table" }, { arg: "operation" }] },
   ] } };
   let g = F.capabilityTargetsFromPolicy(CFG, [{ tool: "store.update" }]);
-  check("recompute literal-target grant (V2)", g.approvals[0].toString(), "11662918066780758608");
+  check("recompute literal-target grant (V2)", g.approvals[0], "6bff1759cf3c00f781f0b15d428f4cf84e59f8b10be48dd4dd742175a3e6f984");
   g = F.capabilityTargetsFromPolicy(CFG, [{ tool: "db.execute", table: "staging_deploy_audit", operation: "insert" }]);
-  check("recompute arg-target grant (V3)", g.approvals[0].toString(), "11517196862591714860");
-  g = F.capabilityTargetsFromPolicy(CFG, [{ target: "42" }]);
-  check("opaque grant used verbatim + counted", JSON.stringify([g.approvals[0].toString(), g.opaque]), JSON.stringify(["42", 1]));
+  check("recompute arg-target grant (V3)", g.approvals[0], "351f47a44bcf935c7242432e24bd11db1536d7c1da873f0ca953c8b80ae02433");
+  g = F.capabilityTargetsFromPolicy(CFG, [{ target: "0".repeat(64) }]);
+  check("opaque grant used verbatim + counted", JSON.stringify([g.approvals[0], g.opaque]), JSON.stringify(["0".repeat(64), 1]));
   g = F.capabilityTargetsFromPolicy(CFG, [{ tool: "db.execute", table: "x" }]);
   check("missing arg field reported", g.errors.length > 0, true);
 
