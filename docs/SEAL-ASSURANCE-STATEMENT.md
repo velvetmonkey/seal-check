@@ -113,8 +113,11 @@ a reviewer can weigh it, in the seL4 / CompCert tradition:
   Whoever can write the approval file is, in effect, an approver.
 - **The wall clock and the freshness state** (nonce-replay set, TTL, future-skew
   rejection) the model assumes as given inputs.
-- **`serde_json` and `ed25519-dalek`** on the approval-evidence path. Their
-  failure direction is to drop the record — i.e. to **deny**.
+- **`serde_json` and `ed25519-dalek`** on the host approval-evidence path.
+  In `seal-host`, the NDJSON signed-token provider signs exact
+  `ApprovalRecord` JSON payload bytes; the SealV2 canonical signed-message
+  token in `mcp-seal-dev` signs `(target, session, issuedAt, expiry, nonce)`.
+  Their failure direction is to drop the record — i.e. to **deny**.
 - **Response egress is not mediated, by design.** Requests are gated; the bytes
   a server sends back to the client are relayed unmediated. Do not read seal's
   guarantee as "nothing leaks".
