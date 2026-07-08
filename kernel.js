@@ -130,7 +130,7 @@ export async function decideSeqRaw(config, steps, tool) {
 
 // --- receipt (schema v1, two strictly-separate, labelled blocks) -------------
 // Emits the canonical v1 decision receipt (normative spec:
-// seal-host/docs/DECISION-RECEIPT-SCHEMA.md) via the shared receipt-format.js
+// docs/DECISION-RECEIPT-SCHEMA.md) via the shared receipt-format.js
 // seam. kernel_identity = binary fact, self-verified (HARD SPLIT — never
 // carries toolchain/axioms). asserted_provenance = proof hygiene the Lean
 // sources claim, NOT verified here and NOT part of the hash. The hash must

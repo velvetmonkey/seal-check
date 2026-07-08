@@ -100,7 +100,7 @@ appear (or matter) in `witness.certs`.
 > this section (`seal_check_receipt: "v0"`, Schema K) is retired. The widget
 > now emits the family-wide canonical **schema v1** receipt
 > (`seal_receipt: "v1"`), normatively specified in
-> `seal-host/docs/DECISION-RECEIPT-SCHEMA.md`, implemented by the shared
+> `docs/DECISION-RECEIPT-SCHEMA.md`, implemented by the shared
 > `receipt-format.js`. The v1 schema preserves this section's separation
 > discipline — §6.2's identity/provenance split is now HARD (a v1
 > `kernel_identity` carrying toolchain/axioms is invalid). This section is

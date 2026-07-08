@@ -2,7 +2,7 @@
 //
 // ============================ TEST-ONLY — NOT SHIPPED ========================
 // Vector test for receipt-format.js against the frozen vectors in
-// seal-host/docs/DECISION-RECEIPT-SCHEMA.md (§2 V1/V4, §3 V2/V2b/V3).
+// docs/DECISION-RECEIPT-SCHEMA.md (§2 V1/V4, §3 V2/V2b/V3).
 // Fails if the shared module and the normative spec ever disagree.
 // Self-contained: all vectors are embedded (no sibling-repo reads).
 //

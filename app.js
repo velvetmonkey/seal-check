@@ -103,26 +103,28 @@ function paintVerdict(node, denyNode, parsed) {
   denyNode.textContent = parsed.deny_kernel ? `denied by: ${parsed.deny_kernel}` : "";
 }
 
-// --- conformance map (receipt field -> SEAL-MEDIATION-PROFILE-L0 clause) ------
-// Each row: [field path, clause ref(s), requirement title, value getter]. Documented
-// in docs/SEAL-MEDIATION-PROFILE-L0.md. Both block + allow flow through renderSpec.
+// --- conformance map (receipt field -> DECISION-RECEIPT-SCHEMA v1 section) -----
+// Each row: [field path, section ref(s), requirement title, value getter]. Documented
+// in docs/DECISION-RECEIPT-SCHEMA.md (vendored v1 normative spec). The L0 profile's §4
+// is the retired v0 Schema-K and is NOT the v1 field authority. Both block + allow
+// flow through renderSpec.
 const CLAUSE_MAP = [
-  ["seal_receipt", "§4.1", "receipt schema version (v1)", (r) => r.seal_receipt],
-  ["canonical_request", "§4.2 · §2.2", "canonical tools/call (parse witness)", (r) => r.canonical_request],
-  ["canonical_request_sha256", "§4.2 · §2.2", "request fingerprint (sha256)", (r) => r.canonical_request_sha256.slice(0, 12) + "…"],
-  ["now", "§4.2 · §5", "logical clock (determinism)", (r) => r.now],
-  ["granted_capabilities", "§4.2 · §3.1", "presented grants (approval targets)", (r) => JSON.stringify(r.granted_capabilities)],
-  ["verdict", "§2.2 · §2.3", "mediation-contract verdict", (r) => r.verdict],
-  ["reason", "§4.3", "decision reason", (r) => r.reason],
-  ["deny_kernel", "§4.3 · §3", "denying gate (null if allowed)", (r) => String(r.deny_kernel)],
-  ["emitted_bytes", "§2.2 · §4.4", "canonical decision bytes (verbatim)", (r) => `${r.emitted_bytes.length} bytes`],
-  ["certs", "§4.5 · §3", "per-gate seals", (r) => r.certs.map((c) => `${c.kernel}:${c.verdict}`).join(", ") || "—"],
-  ["certs[].certHash", "§4.5", "per-gate FNV seal", (r) => r.certs.map((c) => c.certHash.slice(0, 8) + "…").join(", ") || "—"],
-  ["kernel_identity.wasm_sha256", "§6.1", "binary identity (self-verified)", (r) => r.kernel_identity.wasm_sha256.slice(0, 12) + "…"],
-  ["kernel_identity.self_verified", "§6.1 · §5", "verified in browser", (r) => String(r.kernel_identity.self_verified)],
-  ["asserted_provenance.lean_toolchain", "§6.2", "asserted, NOT verified here", (r) => r.asserted_provenance.lean_toolchain],
-  ["asserted_provenance.axioms", "§6.2", "asserted axiom footprint", (r) => r.asserted_provenance.axioms.join(", ")],
-  ["asserted_provenance.verified_in_browser", "§6.2", "MUST be false", (r) => String(r.asserted_provenance.verified_in_browser)],
+  ["seal_receipt", "§1", "receipt schema version (v1)", (r) => r.seal_receipt],
+  ["canonical_request", "§1 · §2", "canonical tools/call (parse witness)", (r) => r.canonical_request],
+  ["canonical_request_sha256", "§2 · §1", "request fingerprint (sha256)", (r) => r.canonical_request_sha256.slice(0, 12) + "…"],
+  ["now", "§1 · §7", "logical clock (determinism)", (r) => r.now],
+  ["granted_capabilities", "§3 · §1", "presented grants (approval targets)", (r) => JSON.stringify(r.granted_capabilities)],
+  ["verdict", "§5", "mediation-contract verdict", (r) => r.verdict],
+  ["reason", "§1", "decision reason", (r) => r.reason],
+  ["deny_kernel", "§1", "denying gate (null if allowed)", (r) => String(r.deny_kernel)],
+  ["emitted_bytes", "§1 · §7", "canonical decision bytes (verbatim)", (r) => `${r.emitted_bytes.length} bytes`],
+  ["certs", "§3 · §1", "per-gate seals", (r) => r.certs.map((c) => `${c.kernel}:${c.verdict}`).join(", ") || "—"],
+  ["certs[].certHash", "§3", "per-gate audit seal (u64)", (r) => r.certs.map((c) => c.certHash.slice(0, 8) + "…").join(", ") || "—"],
+  ["kernel_identity.wasm_sha256", "§4", "binary identity (self-verified)", (r) => r.kernel_identity.wasm_sha256.slice(0, 12) + "…"],
+  ["kernel_identity.self_verified", "§4", "verified in browser", (r) => String(r.kernel_identity.self_verified)],
+  ["asserted_provenance.lean_toolchain", "§4", "asserted, NOT verified here", (r) => r.asserted_provenance.lean_toolchain],
+  ["asserted_provenance.axioms", "§4", "asserted axiom footprint", (r) => r.asserted_provenance.axioms.join(", ")],
+  ["asserted_provenance.verified_in_browser", "§4", "MUST be false", (r) => String(r.asserted_provenance.verified_in_browser)],
 ];
 
 function renderSpec(receipt) {

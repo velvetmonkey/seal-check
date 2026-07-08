@@ -6,7 +6,7 @@
 // browser never sends to a server. No backend.
 //
 // Accepts schema v1 (seal_receipt) and the legacy v0-live dialect
-// (seal_live_receipt) per seal-host/docs/DECISION-RECEIPT-SCHEMA.md; legacy
+// (seal_live_receipt) per docs/DECISION-RECEIPT-SCHEMA.md; legacy
 // Schema K objects are rejected with the spec's regenerate error.
 import { decideRaw, verifyKernelSha } from "./kernel.js";
 import {

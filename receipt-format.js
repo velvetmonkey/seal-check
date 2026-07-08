@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // receipt-format.js — the ONE shared implementation of the canonical decision-
-// receipt format (normative spec: seal-host/docs/DECISION-RECEIPT-SCHEMA.md).
+// receipt format (normative spec: docs/DECISION-RECEIPT-SCHEMA.md).
 //
 // CANONICAL SOURCE. seal-assurance-kit vendors a byte-identical copy at
 // kernel/receipt-format.js (same discipline as its vendored kernel.js /
@@ -169,7 +169,7 @@ export function validateReceipt(r) {
   else if (r.seal_live_receipt === "v0") version = "v0-live";
   else if ("seal_check_receipt" in r) {
     return { ok: false, version: "v0-check",
-      errors: ["legacy Schema K (seal_check_receipt) — not v1-compatible; regenerate with a v1 producer (see seal-host/docs/DECISION-RECEIPT-SCHEMA.md)"] };
+      errors: ["legacy Schema K (seal_check_receipt) — not v1-compatible; regenerate with a v1 producer (see docs/DECISION-RECEIPT-SCHEMA.md)"] };
   } else {
     return { ok: false, version: null, errors: ["no recognized version discriminator"] };
   }
