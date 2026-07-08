@@ -11,7 +11,7 @@
 // All decision semantics live inside the compiled wasm; all input/output shaping is
 // reused verbatim from seal-config.js.
 import { buildEnvelope, buildStepInput, parseVerdict, PUBKEY } from "./seal-config.js";
-import { assembleReceiptV1, canonicalRequest, canonicalRequestSha256 } from "./receipt-format.js";
+import { assembleReceiptV2, canonicalRequest, canonicalRequestSha256 } from "./receipt-format.js";
 
 // --- pinned kernel identity (see AUDIT.md) ----------------------------------
 // sha256 of wasm/seal.wasm, computed 2026-07-05. This is THE kernel id and the
@@ -128,9 +128,9 @@ export async function decideSeqRaw(config, steps, tool) {
   return { raw, step, parsed: parseVerdict(raw, tool) };
 }
 
-// --- receipt (schema v1, two strictly-separate, labelled blocks) -------------
-// Emits the canonical v1 decision receipt (normative spec:
-// docs/DECISION-RECEIPT-SCHEMA.md) via the shared receipt-format.js
+// --- receipt (schema v2, two strictly-separate, labelled blocks) -------------
+// Emits the canonical v2 decision receipt (normative spec:
+// docs/DECISION-RECEIPT-SCHEMA.md §11) via the shared receipt-format.js
 // seam. kernel_identity = binary fact, self-verified (HARD SPLIT — never
 // carries toolchain/axioms). asserted_provenance = proof hygiene the Lean
 // sources claim, NOT verified here and NOT part of the hash. The hash must
@@ -140,16 +140,23 @@ export async function decideSeqRaw(config, steps, tool) {
 // the kernel. seal-check's approvals are raw 64-hex targets (the fire-your-own
 // box accepts arbitrary target commitments), so grants are carried as OPAQUE
 // { target } entries per spec §3: the pre-image is not held here, and the
-// receipt says so instead of inventing one.
+// receipt says so instead of inventing one. The same honesty rule shapes the
+// v2 approval block: targets pasted by a human into this page are an
+// "interactive" channel approval with no nonce/issued_at/expiry to assert;
+// args_hash and approval.policy_hash are derived inside the seam.
 export function buildReceipt({ call, config, parsed, raw, sha }) {
-  return assembleReceiptV1({
+  const verdict = parsed.verdict === "DENY" ? "BLOCK" : parsed.verdict; // ALLOW | BLOCK | ERROR
+  return assembleReceiptV2({
     tool: call.tool,
     arguments: call.args,
     now: call.now ?? 1000,
     canonical_request: canonicalRequest(call.tool, call.args),
     canonical_request_sha256: canonicalRequestSha256(call.tool, call.args),
     bypass: false,
-    verdict: parsed.verdict === "DENY" ? "BLOCK" : parsed.verdict, // ALLOW | BLOCK | ERROR
+    verdict,
+    approval: verdict === "ALLOW"
+      ? { approval_identity: { channel: "interactive" } } // policy_hash derived in the seam
+      : undefined,
     reason: parsed.reason,
     deny_kernel: parsed.deny_kernel ?? null,
     certs: parsed.certs, // per-gate seals (FNV-1a 64-bit certHashes, decimal strings)
