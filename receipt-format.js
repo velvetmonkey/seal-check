@@ -12,9 +12,11 @@
 // on; signatures do not change without a spec bump.
 
 export const RECEIPT_SCHEMA_VERSION = "v1";
+export const RECEIPT_SCHEMA_VERSION_V2 = "v2";
 export const RECEIPT_VERSION_KEY = "seal_receipt";
 export const LEGACY_VERSION_KEYS = ["seal_live_receipt", "seal_check_receipt"];
 export const VERDICTS = ["ALLOW", "BLOCK", "ERROR"];
+export const APPROVAL_CHANNELS = ["file", "interactive", "ed25519"];
 // Host audit lines (seal-host/Host/Audit.lean) speak lowercase; receipts never do.
 export const HOST_AUDIT_VERDICT_MAP = { allow: "ALLOW", deny: "BLOCK" };
 
@@ -74,6 +76,24 @@ export function sha256Hex(bytes) {
 
 export function canonicalRequestSha256(tool, args) {
   return sha256Hex(new TextEncoder().encode(canonicalRequest(tool, args)));
+}
+
+// --- §11.3: derived hashes ---------------------------------------------------
+// SHA-256 over the UTF-8 bytes of JSON.stringify(obj) in the object's stored
+// key order — the §2 serialization discipline. v2 uses this for args_hash
+// (over `arguments`) and approval.policy_hash (over `kernel_config`).
+// Verifiers recompute both and reject on mismatch.
+export function canonicalJsonSha256(obj) {
+  return sha256Hex(new TextEncoder().encode(JSON.stringify(obj)));
+}
+
+// §11.4: a tool's payment-class declaration from the runtime config (never
+// proof-bearing). Returns {class, bind: {amount, merchant, currency}} or null.
+export function paymentDeclFor(kernelConfig, tool) {
+  const tools = (kernelConfig && kernelConfig.safety && kernelConfig.safety.tools) || [];
+  const spec = tools.find((t) => t.name === tool);
+  return spec && spec.payment && spec.payment.class === "payment" && isObj(spec.payment.bind)
+    ? spec.payment : null;
 }
 
 // --- §3: capability targets --------------------------------------------------
@@ -153,19 +173,62 @@ export function assembleReceiptV1(fields) {
   return r;
 }
 
+// §11.5 canonical v2 assembly. Same discipline as V1 plus the v2 fields, with
+// the approval block's sub-object key order fixed too. Derived hashes are
+// computed HERE from the receipt's own arguments/kernel_config (single source;
+// producers cannot skew them), unless the receipt is a bypass.
+const V2_KEY_ORDER = [
+  "seal_receipt", "tool", "action", "arguments", "args_hash", "now",
+  "canonical_request", "canonical_request_sha256", "bypass", "verdict",
+  "reason", "deny_kernel", "amount", "merchant", "currency", "approval",
+  "certs", "emitted_bytes", "kernel_identity", "asserted_provenance",
+  "kernel_config", "granted_capabilities", "policy_id", "signature",
+];
+const APPROVAL_KEY_ORDER = ["approval_identity", "nonce", "issued_at", "expiry", "policy_hash"];
+const IDENTITY_KEY_ORDER = ["channel", "key_id"];
+
+function orderKeys(obj, order) {
+  const out = {};
+  for (const k of order) if (obj[k] !== undefined) out[k] = obj[k];
+  return out;
+}
+
+export function assembleReceiptV2(fields) {
+  const f = { ...fields };
+  if (f.bypass === false && isObj(f.arguments) && f.args_hash === undefined) {
+    f.args_hash = canonicalJsonSha256(f.arguments);
+  }
+  if (isObj(f.approval)) {
+    const a = { ...f.approval };
+    if (a.policy_hash === undefined && isObj(f.kernel_config)) {
+      a.policy_hash = canonicalJsonSha256(f.kernel_config);
+    }
+    if (isObj(a.approval_identity)) a.approval_identity = orderKeys(a.approval_identity, IDENTITY_KEY_ORDER);
+    f.approval = orderKeys(a, APPROVAL_KEY_ORDER);
+  }
+  const r = { seal_receipt: RECEIPT_SCHEMA_VERSION_V2 };
+  for (const k of V2_KEY_ORDER) {
+    if (k === "seal_receipt") continue;
+    if (f[k] !== undefined) r[k] = f[k];
+  }
+  return r;
+}
+
 // --- §1/§7: shape validation ---------------------------------------------------
 const HEX64 = /^[0-9a-f]{64}$/;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
-// Structural validation against the v1 field table. Returns
-// { ok, version, errors }. version: "v1" | "v0-live" (accepted) |
-// "v0-check" (rejected legacy Schema K) | null (unrecognized).
+// Structural validation against the v1/v2 field tables. Returns
+// { ok, version, errors }. version: "v2" (current) | "v1" (accepted-legacy) |
+// "v0-live" (grandfathered) | "v0-check" (rejected legacy Schema K) |
+// null (unrecognized).
 export function validateReceipt(r) {
   const errors = [];
   if (!isObj(r)) return { ok: false, version: null, errors: ["receipt is not an object"] };
 
   let version = null;
-  if (r.seal_receipt === RECEIPT_SCHEMA_VERSION) version = "v1";
+  if (r.seal_receipt === RECEIPT_SCHEMA_VERSION_V2) version = "v2";
+  else if (r.seal_receipt === RECEIPT_SCHEMA_VERSION) version = "v1";
   else if (r.seal_live_receipt === "v0") version = "v0-live";
   else if ("seal_check_receipt" in r) {
     return { ok: false, version: "v0-check",
@@ -195,19 +258,19 @@ export function validateReceipt(r) {
     } else if (typeof w !== "string" || !HEX64.test(w)) {
       errors.push("kernel_identity.wasm_sha256: 64-hex string required when mediated");
     }
-    // §4 HARD SPLIT (v1 only; v0-live merged blocks are grandfathered):
+    // §4 HARD SPLIT (v1 and v2; v0-live merged blocks are grandfathered):
     // identity is the binary hash — asserted provenance lives in its own
-    // block. A v1 kernel_identity carrying toolchain/axioms is INVALID.
-    if (version === "v1") {
+    // block. A v1/v2 kernel_identity carrying toolchain/axioms is INVALID.
+    if (version === "v1" || version === "v2") {
       for (const k of ["lean_toolchain", "axioms"]) {
         if (k in r.kernel_identity)
-          errors.push(`kernel_identity.${k}: forbidden in v1 (hard split, L0 §6.2) — move to asserted_provenance`);
+          errors.push(`kernel_identity.${k}: forbidden in ${version} (hard split, L0 §6.2) — move to asserted_provenance`);
       }
       if (typeof r.kernel_identity.self_verified !== "boolean")
-        errors.push("kernel_identity.self_verified: boolean required in v1");
+        errors.push(`kernel_identity.self_verified: boolean required in ${version}`);
     }
   }
-  if (version === "v1" && "asserted_provenance" in r) {
+  if ((version === "v1" || version === "v2") && "asserted_provenance" in r) {
     if (!isObj(r.asserted_provenance) || r.asserted_provenance.verified_in_browser === true)
       errors.push("asserted_provenance: object with verified_in_browser !== true required (asserted, never verified)");
   }
@@ -225,5 +288,78 @@ export function validateReceipt(r) {
     if (!("deny_kernel" in r)) errors.push("deny_kernel: required when mediated (string or null)");
   }
 
+  if (version === "v2") validateV2Extras(r, errors);
+
   return { ok: errors.length === 0, version, errors };
+}
+
+// §11 checks beyond the shared v1 core. Derived hashes are RECOMPUTED here —
+// a receipt asserting a hash its own fields do not produce is invalid.
+function validateV2Extras(r, errors) {
+  if ("action" in r && (typeof r.action !== "string" || !r.action))
+    errors.push("action: non-empty string when present");
+
+  if (r.bypass === false) {
+    if (typeof r.args_hash !== "string" || !HEX64.test(r.args_hash))
+      errors.push("args_hash: 64-hex string required when mediated (v2)");
+    else if (isObj(r.arguments) && r.args_hash !== canonicalJsonSha256(r.arguments))
+      errors.push("args_hash: does not equal sha256 of the canonical arguments serialization");
+  } else if ("args_hash" in r) {
+    errors.push("args_hash: must be absent on bypass");
+  }
+
+  // Approval block: required on mediated ALLOW; optional on BLOCK; forbidden on bypass.
+  if (r.bypass === true && "approval" in r) errors.push("approval: must be absent on bypass");
+  if (r.bypass === false && r.verdict === "ALLOW" && !isObj(r.approval))
+    errors.push("approval: object required on mediated ALLOW (v2)");
+  if (isObj(r.approval)) {
+    const a = r.approval;
+    const id = a.approval_identity;
+    if (!isObj(id)) errors.push("approval.approval_identity: object required");
+    else {
+      if (!APPROVAL_CHANNELS.includes(id.channel))
+        errors.push(`approval.approval_identity.channel: one of ${APPROVAL_CHANNELS.join("|")} required`);
+      if (id.channel === "ed25519") {
+        if (typeof id.key_id !== "string" || !id.key_id)
+          errors.push("approval.approval_identity.key_id: required on the ed25519 channel");
+      } else if ("key_id" in id) {
+        errors.push("approval.approval_identity.key_id: only the ed25519 channel carries a key_id");
+      }
+    }
+    if (typeof a.policy_hash !== "string" || !HEX64.test(a.policy_hash))
+      errors.push("approval.policy_hash: 64-hex string required");
+    else if (isObj(r.kernel_config) && a.policy_hash !== canonicalJsonSha256(r.kernel_config))
+      errors.push("approval.policy_hash: does not equal sha256 of the canonical kernel_config serialization");
+    for (const k of ["issued_at", "expiry"]) {
+      if (k in a && (!Number.isInteger(a[k]) || a[k] < 0))
+        errors.push(`approval.${k}: non-negative integer (epoch ms) when present`);
+    }
+    if ("nonce" in a && (typeof a.nonce !== "string" || !a.nonce))
+      errors.push("approval.nonce: non-empty string when present");
+    if (isObj(id) && id.channel === "ed25519") {
+      for (const k of ["nonce", "issued_at", "expiry"]) {
+        if (!(k in a)) errors.push(`approval.${k}: required on the ed25519 channel`);
+      }
+    }
+  }
+
+  // §11.4 payment class: fields present iff the runtime config declares the
+  // class, and each byte-equals its bound argument. Fabrication is invalid.
+  const decl = isObj(r.kernel_config) ? paymentDeclFor(r.kernel_config, r.tool) : null;
+  const PAYMENT_FIELDS = ["amount", "merchant", "currency"];
+  if (decl) {
+    for (const f of PAYMENT_FIELDS) {
+      const argName = decl.bind[f];
+      if (!(f in r)) { errors.push(`${f}: required for payment-class tool ${r.tool}`); continue; }
+      if (typeof argName !== "string" || !isObj(r.arguments) || !(argName in r.arguments)) {
+        errors.push(`${f}: payment binding names argument ${JSON.stringify(argName)} which is not present`);
+      } else if (r[f] !== r.arguments[argName]) {
+        errors.push(`${f}: does not equal bound argument ${argName} (verbatim copy required)`);
+      }
+    }
+  } else {
+    for (const f of PAYMENT_FIELDS) {
+      if (f in r) errors.push(`${f}: present but the config declares no payment class for ${r.tool} (fabrication)`);
+    }
+  }
 }

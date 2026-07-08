@@ -119,6 +119,122 @@ function check(name, got, want) {
       "verdict", "reason", "deny_kernel", "certs", "emitted_bytes", "kernel_identity",
       "kernel_config", "granted_capabilities"]));
 
+  // ========================= §11: receipt schema v2 =========================
+
+  // --- §11.3 derived-hash vectors V5-V7
+  check("V5 args_hash (§2 V4 args)",
+    F.canonicalJsonSha256({ database: "prod", sql: "drop table users" }),
+    "46657b69f15f78859ead6dd0d416cbfc9809922757ba90aa16a56b7d73afafc8");
+  check("V6 args_hash (§2 V1 args)",
+    F.canonicalJsonSha256(v1args),
+    "53ae7fa46f79dd2637b3d5af5a160834b755d0a00a66fec11cb313db8bca753c");
+  const PAYCFG = { epoch: 1, safety: { approval: { ttl_seconds: 120 }, tools: [
+    { name: "payments.send", mode: "guarded",
+      payment: { class: "payment", bind: { amount: "amount", merchant: "to", currency: "currency" } },
+      target: [{ literal: "pay" }, { arg: "to" }, { arg: "amount" }] },
+  ] } };
+  check("V7 policy_hash (§11.4 example config)",
+    F.canonicalJsonSha256(PAYCFG),
+    "436c50ce0860d500c188e7e7c8133eed1e41e626b01174727159f3f664e84407");
+
+  // --- §11.5 assembly: key order, derived hashes computed in the seam
+  const payArgs = { amount: 40000, to: "supplier-77", currency: "GBP" };
+  const v2fields = {
+    tool: "payments.send", arguments: payArgs, now: 1000,
+    canonical_request: F.canonicalRequest("payments.send", payArgs),
+    canonical_request_sha256: F.canonicalRequestSha256("payments.send", payArgs),
+    bypass: false, verdict: "ALLOW", reason: "every gating kernel allows", deny_kernel: null,
+    amount: 40000, merchant: "supplier-77", currency: "GBP",
+    approval: {
+      approval_identity: { channel: "ed25519", key_id: "ab12cd34" },
+      nonce: "f".repeat(64), issued_at: 1751900000000, expiry: 1751900120000,
+    },
+    certs: [], emitted_bytes: "{}",
+    kernel_identity: { wasm_sha256: "0".repeat(64), self_verified: true },
+    kernel_config: PAYCFG,
+    granted_capabilities: [{ tool: "payments.send", to: "supplier-77", amount: 40000 }],
+  };
+  const v2r = F.assembleReceiptV2(v2fields);
+  check("assembleReceiptV2 sets discriminator", v2r.seal_receipt, "v2");
+  check("assembleReceiptV2 derives args_hash", v2r.args_hash, F.canonicalJsonSha256(payArgs));
+  check("assembleReceiptV2 derives approval.policy_hash", v2r.approval.policy_hash, F.canonicalJsonSha256(PAYCFG));
+  check("assembleReceiptV2 approval key order",
+    JSON.stringify(Object.keys(v2r.approval)),
+    JSON.stringify(["approval_identity", "nonce", "issued_at", "expiry", "policy_hash"]));
+  check("assembleReceiptV2 top-level key order",
+    JSON.stringify(Object.keys(v2r)),
+    JSON.stringify(["seal_receipt", "tool", "arguments", "args_hash", "now", "canonical_request",
+      "canonical_request_sha256", "bypass", "verdict", "reason", "deny_kernel", "amount",
+      "merchant", "currency", "approval", "certs", "emitted_bytes", "kernel_identity",
+      "kernel_config", "granted_capabilities"]));
+
+  // --- §11.5 roundtrip obligation: assemble(parse(serialize)) byte-identical
+  const ser = JSON.stringify(v2r);
+  const round = F.assembleReceiptV2(JSON.parse(ser));
+  check("v2 roundtrip byte-identical", JSON.stringify(round), ser);
+
+  // --- §11 validation: well-formed v2 passes
+  r = F.validateReceipt(v2r);
+  check("validateReceipt v2 well-formed", JSON.stringify([r.ok, r.version, r.errors]), JSON.stringify([true, "v2", []]));
+
+  // --- §11.6 recompute-and-reject
+  r = F.validateReceipt({ ...v2r, args_hash: F.canonicalJsonSha256({ different: 1 }) });
+  check("v2 rejects args_hash mismatch", r.ok, false);
+  r = F.validateReceipt({ ...v2r, approval: { ...v2r.approval, policy_hash: "0".repeat(64) } });
+  check("v2 rejects policy_hash mismatch", r.ok, false);
+
+  // --- §11.4 payment gates
+  r = F.validateReceipt({ ...v2r, amount: 39999 });
+  check("v2 rejects amount != bound argument (gate:amount-merchant-mismatch)", r.ok, false);
+  r = F.validateReceipt({ ...v2r, merchant: "someone-else" });
+  check("v2 rejects merchant != bound argument", r.ok, false);
+  const noPay = { ...v2r };
+  delete noPay.amount;
+  r = F.validateReceipt(noPay);
+  check("v2 rejects missing payment field on payment-class tool", r.ok, false);
+  const dbArgs = { database: "prod", sql: "select 1" };
+  const dbCfg = { epoch: 1, safety: { tools: [{ name: "db.execute", target: [{ arg: "database" }] }] } };
+  const fab = F.assembleReceiptV2({
+    tool: "db.execute", arguments: dbArgs, bypass: false, verdict: "ALLOW", reason: "ok",
+    deny_kernel: null, amount: 1, merchant: "x", currency: "GBP",
+    approval: { approval_identity: { channel: "file" } },
+    canonical_request_sha256: F.canonicalRequestSha256("db.execute", dbArgs),
+    certs: [], emitted_bytes: "{}",
+    kernel_identity: { wasm_sha256: "0".repeat(64), self_verified: true },
+    kernel_config: dbCfg, granted_capabilities: [],
+  });
+  r = F.validateReceipt(fab);
+  check("v2 rejects fabricated payment fields on non-payment tool", r.ok, false);
+
+  // --- §11.2 approval identity + channel requiredness
+  r = F.validateReceipt({ ...v2r, approval: { ...v2r.approval, approval_identity: { channel: "file", key_id: "x" } } });
+  check("v2 rejects key_id off the ed25519 channel", r.ok, false);
+  const edMissing = { ...v2r.approval, approval_identity: { channel: "ed25519", key_id: "ab12cd34" } };
+  delete edMissing.nonce;
+  r = F.validateReceipt({ ...v2r, approval: edMissing });
+  check("v2 rejects ed25519 approval without nonce", r.ok, false);
+  const allowNoApproval = { ...v2r };
+  delete allowNoApproval.approval;
+  r = F.validateReceipt(allowNoApproval);
+  check("v2 rejects mediated ALLOW without approval block", r.ok, false);
+  const fileOk = F.assembleReceiptV2({
+    ...v2fields,
+    tool: "store.update", arguments: { op: "orset.add", key: "k1" },
+    canonical_request: undefined,
+    canonical_request_sha256: F.canonicalRequestSha256("store.update", { op: "orset.add", key: "k1" }),
+    amount: undefined, merchant: undefined, currency: undefined,
+    approval: { approval_identity: { channel: "interactive" } },
+    kernel_config: { epoch: 1, safety: { tools: [{ name: "store.update", target: [{ literal: "store" }] }] } },
+    granted_capabilities: [{ target: "6bff1759cf3c00f781f0b15d428f4cf84e59f8b10be48dd4dd742175a3e6f984" }],
+  });
+  r = F.validateReceipt(fileOk);
+  check("v2 interactive-channel approval without nonce/expiry accepted (honesty rule)",
+    JSON.stringify([r.ok, r.errors]), JSON.stringify([true, []]));
+
+  // --- v1 stays accepted-legacy under the v2-aware validator
+  r = F.validateReceipt(v1ok);
+  check("v1 still validates (accepted-legacy)", JSON.stringify([r.ok, r.version]), JSON.stringify([true, "v1"]));
+
   console.log(failures === 0 ? "\nALL VECTORS PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error("ERR", e); process.exit(1); });
