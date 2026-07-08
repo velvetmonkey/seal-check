@@ -4,7 +4,7 @@ seal-check ships only public v1 artifacts. This file is the **publish gate**: th
 checklist below MUST pass before any public flip, and the flip itself is a separate,
 explicitly-authorised manual procedure (§Flip). Re-run the commands before publishing.
 
-**Current status: PASS (private). NOT PUBLISHED.** Repo has no remote; no GitHub Pages.
+**Current status: PASS (private). NOT PUBLISHED.** Private GitHub remote only; no GitHub Pages.
 
 ## Pinned kernel binary
 ```
@@ -30,23 +30,29 @@ SHA-256 fallback on non-secure origins) and refuses to emit receipts on mismatch
       (out of scope; reuse-as-is). A future hardening pass can rebuild with symbol
       stripping in the private build pipeline.
 - [x] **No private markers in code** — grep over all shipped JS/HTML/CSS for
-      `seal-host | mcp-seal-dev | wasm-spike | monkey-01 | /home/monkey | record-core |
-      M5..M8` returns nothing.
+      the private-marker set (internal repo names `seal-host | mcp-seal-dev |
+      wasm-spike | record-core`, milestone tags `M5..M8`, plus your build
+      machine's hostname and `$HOME` path — substitute the concrete values
+      locally; they are deliberately not written into this tracked file)
+      returns nothing.
 - [x] **No private markers in the spec** — `docs/SEAL-MEDIATION-PROFILE-L0.md` names
       nothing private; higher layers are excluded generically, not described.
 - [x] **README / NOTICE describe only public artifacts.**
 - [x] **Node test harness is TEST-ONLY** — see below.
 - [x] **Receipt determinism** — `node test/receipt-harness.cjs` → all PASS, block
-      receipt byte-identical across runs (2062 bytes).
+      receipt byte-identical across runs (4589 bytes, schema v1).
 
-### TEST-ONLY: `test/receipt-harness.cjs`
-`test/receipt-harness.cjs` is a **verification harness, not runtime**. `index.html`
-never loads it; the browser never sees it; it ships no user-facing behaviour. It runs
-the *same public wasm* under Node only to reproduce receipts and confirm determinism.
-It has a prominent TEST-ONLY header and no third-party dependencies. A reviewer MUST
-NOT mistake it for production code. The shipped runtime is exactly: `index.html`,
-`app.js`, `kernel.js`, `seal-config.js`, `seal-wasm.js`, `corpus.js`, `style.css`,
-`wasm/seal.{js,wasm}`.
+### TEST-ONLY: `test/*.cjs` and `differential/`
+The Node scripts under `test/` (`receipt-format.test.cjs`, `receipt-harness.cjs`,
+`cross-receipt.test.cjs`, `receipt-verify.test.cjs`) and `differential/` are
+**verification harnesses, not runtime**. `index.html` never loads them; the browser
+never sees them; they ship no user-facing behaviour. They run the *same public wasm*
+under Node only to reproduce receipts, confirm determinism, and prove the tampered
+/ negative verification paths reject. Each has a prominent TEST-ONLY header and no
+third-party dependencies. A reviewer MUST NOT mistake them for production code. The
+shipped runtime is exactly: `index.html`, `app.js`, `receipt.js`,
+`receipt-format.js`, `kernel.js`, `seal-config.js`, `seal-wasm.js`, `corpus.js`,
+`style.css`, `wasm/seal.{js,wasm}`.
 
 ## Re-run the audit
 ```sh
@@ -54,7 +60,9 @@ sha256sum wasm/seal.wasm    # = pinned value
 
 # no private markers in any shipped file (docs intentionally NAME the boundary, so
 # exclude README/AUDIT/spec from the code scan):
-grep -rEni 'seal-host|mcp-seal-dev|wasm-spike|monkey-01|/home/monkey|record.?core' \
+# substitute <hostname> and <home-path> with your build machine's values —
+# the concrete strings are deliberately kept out of this tracked file:
+grep -rEni "seal-host|mcp-seal-dev|wasm-spike|<hostname>|<home-path>|record.?core" \
   --exclude-dir=.git --exclude=README.md --exclude=AUDIT.md \
   --exclude=SEAL-MEDIATION-PROFILE-L0.md --binary-files=without-match .
 echo "exit=$?  (1 = clean / no matches)"

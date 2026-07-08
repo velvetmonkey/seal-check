@@ -6,7 +6,7 @@ import {
 } from "./kernel.js";
 import { CFG_STANDARD, stableHash } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
-import { decodeReceiptParam, verifyReceipt } from "./receipt.js";
+import { decodeReceiptParam, verifyReceipt, callSummary } from "./receipt.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -354,20 +354,29 @@ function focusReceiptMode() {
   const tag = document.querySelector("header .tag");
   if (tag) tag.classList.add("hidden");
 }
-function showReceiptError(msg) {
-  focusReceiptMode();
+function showReceiptError(msg, focus = true) {
+  if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
   const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
+}
+
+// HTML fragment describing the mediated call — demo receipts keep their
+// operation-on-table phrasing, everything else falls back to tool+arguments.
+function callSummaryHtml(receipt) {
+  const s = callSummary(receipt);
+  return s.demo
+    ? `run <code>${escapeHtml(s.operation)}</code> on <code>${escapeHtml(s.table)}</code>`
+    : `call <code>${escapeHtml(s.tool)}</code> with arguments <code>${escapeHtml(s.argsJson)}</code>`;
 }
 
 // The control receipt: seal was switched OFF (bypass), so there is no kernel
 // decision to verify. Render it honestly, NOT as a passed verification.
-function renderControlReceipt(receipt, a) {
+function renderControlReceipt(receipt) {
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = "NO GATE";
   verdictNode.className = "verdict v-block";
   $("rv-deny").textContent = "seal switched off (control)";
   $("rv-context").innerHTML = `This is the <strong>control</strong> run. The gate was switched OFF, so it did not mediate the call. ` +
-    `The agent ran <code>${escapeHtml(a.operation)}</code> on <code>${escapeHtml(a.table)}</code>, the byte-for-byte identical request to the blocked attack.`;
+    `The agent asked to ${callSummaryHtml(receipt)} — with the gate absent, nothing stood in the way.`;
   const ul = $("rv-checks"); ul.textContent = "";
   ul.append(rvLine(true, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…), the same request as the blocked attack`));
   ul.append(rvLine(null, "the gate was OFF, so the verified kernel did NOT run, nothing mediated this call"));
@@ -379,27 +388,24 @@ function renderControlReceipt(receipt, a) {
   s.className = "reason bad";
   $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
-async function maybeRenderDeepLinkedReceipt() {
-  let receipt;
-  try { receipt = decodeReceiptParam(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
-  if (!receipt) return;
-  focusReceiptMode();
+async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) {
+  if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
   let r;
-  try { r = await verifyReceipt(receipt); } catch (e) { return showReceiptError("verification error: " + e.message); }
+  try { r = await verifyReceipt(receipt); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
 
-  const a = receipt.arguments || {};
-  if (receipt.bypass) return renderControlReceipt(receipt, a);
+  if (receipt.bypass) return renderControlReceipt(receipt);
   if (r.formatOk === false) {
     return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +
-      (r.formatErrors || []).join("; "));
+      (r.formatErrors || []).join("; "), focus);
   }
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = receipt.verdict === "BLOCK" ? "REFUSED" : receipt.verdict === "ALLOW" ? "ALLOWED" : (receipt.verdict || "?");
   verdictNode.className = "verdict " + (receipt.verdict === "BLOCK" ? "v-block" : receipt.verdict === "ALLOW" ? "v-allow" : "v-error");
   $("rv-deny").textContent = receipt.deny_kernel ? `${receipt.deny_kernel} rule` : "";
 
-  $("rv-context").innerHTML = `An AI agent's tool-call was mediated by the seal gate: it asked to run ` +
-    `<code>${escapeHtml(a.operation)}</code> on <code>${escapeHtml(a.table)}</code>. The gate's decision, re-checked below:`;
+  $("rv-context").innerHTML = (note ? `<strong>${escapeHtml(note)}</strong> ` : "") +
+    `An AI agent's tool-call was mediated by the seal gate: it asked to ${callSummaryHtml(receipt)}. ` +
+    `The gate's decision, re-checked below:`;
 
   const ul = $("rv-checks"); ul.textContent = "";
   ul.append(rvLine(r.kernelShaMatch, `kernel binary self-verified (sha256 ${r.kernelSha.slice(0, 12)}…, matches the receipt)`));
@@ -408,6 +414,9 @@ async function maybeRenderDeepLinkedReceipt() {
     ul.append(rvLine(null, receipt.bypass ? "verdict not re-derivable: this receipt had the gate switched OFF (the control)" : "verdict not re-derivable (receipt carries no policy)"));
   } else {
     ul.append(rvLine(r.verdictMatch, `verdict reproduced on-device: ${r.rederived === "BLOCK" ? "REFUSED" : r.rederived} (re-ran the exact request through the kernel)`));
+  }
+  if (r.emittedBytesMatch !== null && r.emittedBytesMatch !== undefined) {
+    ul.append(rvLine(r.emittedBytesMatch, "emitted decision bytes byte-identical to the re-run"));
   }
 
   $("rv-json").textContent = JSON.stringify(receipt, null, 2);
@@ -419,6 +428,35 @@ async function maybeRenderDeepLinkedReceipt() {
   $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+async function maybeRenderDeepLinkedReceipt() {
+  let receipt;
+  try { receipt = decodeReceiptParam(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
+  if (!receipt) return;
+  await renderVerifiedReceipt(receipt);
+}
+
+// Demo the deep-link flow without a link: build a real receipt through the
+// kernel, optionally tamper with it, and push it through the same verifier UI.
+async function demoReceipt(tamper) {
+  const status = $("demo-receipt-status");
+  if (LOCKED) { status.textContent = "kernel not verified — demo disabled."; return; }
+  status.textContent = "";
+  try {
+    const call = parseCall(EXAMPLES.allow);
+    const res = await decideRaw(CFG_STANDARD, call);
+    const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA });
+    if (tamper) receipt.verdict = receipt.verdict === "ALLOW" ? "BLOCK" : "ALLOW";
+    await renderVerifiedReceipt(receipt, {
+      focus: false,
+      note: tamper
+        ? "Demo: this receipt was deliberately tampered with (verdict flipped) — verification must fail."
+        : "Demo: a genuine receipt, built by this page's kernel a moment ago.",
+    });
+  } catch (e) {
+    status.textContent = "demo error: " + e.message;
+  }
+}
+
 // --- wire up -----------------------------------------------------------------
 function init() {
   $("call-input").value = EXAMPLES.block;
@@ -426,6 +464,8 @@ function init() {
     b.addEventListener("click", () => { $("call-input").value = EXAMPLES[b.dataset.ex]; });
   }
   $("run-btn").addEventListener("click", runInput);
+  $("demo-receipt-good").addEventListener("click", () => demoReceipt(false));
+  $("demo-receipt-tampered").addEventListener("click", () => demoReceipt(true));
   $("download-receipt").addEventListener("click", downloadReceipt);
   $("rerun-receipt").addEventListener("click", verifyDeterminism);
   $("replay-all").addEventListener("click", replayAll);

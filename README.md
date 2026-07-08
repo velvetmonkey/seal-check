@@ -17,7 +17,7 @@ That is the product line in one sentence: prove the rulebook, then check every b
 
 ## What happens when someone hands you a decision receipt
 
-Paste a call or load a receipt. The page hashes its bundled wasm, checks the pinned identity, re-runs the same kernel, and compares the emitted bytes. It also mirrors the target commitment in JavaScript: code-point-count netstrings, UTF-8 bytes, SHA-256, lowercase hex.
+Receipts arrive as deep links: open the page with `#receipt=<base64url of the receipt JSON>` (that is how seal-live-demo hands you one) and it is re-verified in your browser — or use the "Verify a receipt" buttons on the page to watch a genuine receipt pass and a tampered one fail. The page hashes its bundled wasm, checks the pinned identity, re-runs the same kernel, and compares the emitted bytes. It also mirrors the target commitment in JavaScript: code-point-count netstrings, UTF-8 bytes, SHA-256, lowercase hex.
 
 Nothing you paste leaves the page. The page verifies a decision artifact; it does not certify that your whole deployment is correctly wired through Seal.
 
@@ -40,15 +40,25 @@ Mandatory non-claims:
 
 ## Verify in five minutes
 
+Open the page (the wasm fetch needs http, not file://):
+
 ```sh
-python3 -m http.server 8000
-# open http://localhost:8000
+python3 -m http.server 8000   # then visit http://localhost:8000
+```
+
+Reproduce off-browser — these are standalone, need no server, and run the same
+shipped wasm under Node:
+
+```sh
 node test/receipt-format.test.cjs
 node test/receipt-harness.cjs
 node test/cross-receipt.test.cjs
+node test/receipt-verify.test.cjs   # negative paths: tampered receipts must FAIL
 ```
 
 ## The Seal family
+
+_All Seal-family repositories are currently private; these links resolve only for authorised evaluators._
 
 - [seal](https://github.com/velvetmonkey/seal): the private umbrella story, product map, and evaluator path.
 - [mcp-seal-dev](https://github.com/velvetmonkey/mcp-seal-dev): The rulebook, proven.

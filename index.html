@@ -82,6 +82,19 @@
       </div>
     </section>
 
+    <!-- 1b. VERIFY A RECEIPT (demo of the deep-link flow) -------------------->
+    <section id="verify-demo">
+      <h2>1b · Verify a receipt</h2>
+      <p class="muted">Receipts travel as deep links: open this page with
+        <code>#receipt=&lt;base64url of the receipt JSON&gt;</code> (that is how seal-live-demo hands you one)
+        and it is re-verified here, entirely in your browser. Or watch both outcomes now:</p>
+      <div class="examples">
+        <button id="demo-receipt-good">Verify a genuine receipt</button>
+        <button id="demo-receipt-tampered">Verify a TAMPERED receipt</button>
+        <span id="demo-receipt-status" class="muted"></span>
+      </div>
+    </section>
+
     <!-- 2. REPLAY ----------------------------------------------------------->
     <section id="replay">
       <h2>2 · Replay known bypass attacks</h2>

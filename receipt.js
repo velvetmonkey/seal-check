@@ -13,11 +13,27 @@ import {
   canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, validateReceipt,
 } from "./receipt-format.js";
 
-function b64urlToStr(s) {
+export function b64urlToStr(s) {
   s = s.replace(/-/g, "+").replace(/_/g, "/");
   while (s.length % 4) s += "=";
   const bytes = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   return new TextDecoder().decode(bytes);
+}
+
+// Human summary of the call a receipt mediated. Recognizes the seal-live-demo
+// argument shape ({operation, table}); every other valid v1 receipt gets a
+// generic tool+arguments summary so real receipts never render "undefined".
+export function callSummary(receipt) {
+  const a = (receipt && typeof receipt.arguments === "object" && !Array.isArray(receipt.arguments)
+    && receipt.arguments) || {};
+  if (typeof a.operation === "string" && typeof a.table === "string") {
+    return { demo: true, operation: a.operation, table: a.table };
+  }
+  let argsJson = "{}";
+  try { argsJson = JSON.stringify(a); } catch { /* unserializable — keep the placeholder */ }
+  if (argsJson.length > 120) argsJson = argsJson.slice(0, 120) + "…";
+  const tool = receipt && typeof receipt.tool === "string" && receipt.tool ? receipt.tool : "unknown tool";
+  return { demo: false, tool, argsJson };
 }
 
 // Read #receipt=<base64url> from the URL fragment. Returns the receipt object or null.
