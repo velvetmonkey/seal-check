@@ -51,8 +51,8 @@ const SealModule = globalThis.SealModule;
   const blockR = JSON.parse(block), allowR = JSON.parse(allow);
   check("block verdict = BLOCK", blockR.verdict === "BLOCK");
   check("allow verdict = ALLOW", allowR.verdict === "ALLOW");
-  check("schema v1 discriminator", blockR.seal_receipt === "v1" && allowR.seal_receipt === "v1");
-  check("validateReceipt: both receipts well-formed v1",
+  check("schema v2 discriminator", blockR.seal_receipt === "v2" && allowR.seal_receipt === "v2");
+  check("validateReceipt: both receipts well-formed v2",
     F.validateReceipt(blockR).ok && F.validateReceipt(allowR).ok);
   check("hard split: kernel_identity carries no toolchain/axioms",
     !("lean_toolchain" in blockR.kernel_identity) && !("axioms" in blockR.kernel_identity));

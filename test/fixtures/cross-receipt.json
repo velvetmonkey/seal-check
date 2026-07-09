@@ -1,10 +1,11 @@
 {
-  "seal_receipt": "v1",
+  "seal_receipt": "v2",
   "tool": "store.update",
   "arguments": {
     "op": "orset.add",
     "key": "k1"
   },
+  "args_hash": "5bf0ba481f358f4feb28de4d34b381be33102c4ff9746241a2fe1a44353cf824",
   "now": 1000,
   "canonical_request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"store.update\",\"arguments\":{\"op\":\"orset.add\",\"key\":\"k1\"}}}",
   "canonical_request_sha256": "c423e524f58c6bfff5e750dabd761795af1afc08ba895dd2322729f424f941ca",
@@ -12,6 +13,12 @@
   "verdict": "ALLOW",
   "reason": "every gating kernel allows",
   "deny_kernel": null,
+  "approval": {
+    "approval_identity": {
+      "channel": "interactive"
+    },
+    "policy_hash": "50d98711427502f8386fbe19baa9bfadb6c30d4e702828c6e39f78e97b8aec07"
+  },
   "certs": [
     {
       "kernel": "safety",

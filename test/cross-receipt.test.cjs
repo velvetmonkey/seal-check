@@ -65,7 +65,7 @@ function check(name, cond, detail = "") {
 
   // Verify through the SHIPPED verifier.
   const out = await R.verifyReceipt(JSON.parse(json));
-  check("verifyReceipt: schema valid (v1)", out.formatOk && out.formatVersion === "v1",
+  check("verifyReceipt: schema valid (v2)", out.formatOk && out.formatVersion === "v2",
     (out.formatErrors || []).join("; "));
   check("verifyReceipt: kernel sha match", out.kernelShaMatch === true);
   check("verifyReceipt: request hash match", out.requestHashMatch === true);
