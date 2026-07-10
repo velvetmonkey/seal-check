@@ -40,6 +40,7 @@
           <pre id="rv-json" class="receipt"></pre>
         </details>
         <p class="muted">Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel.</p>
+        <p class="muted">Scope: seal-check verifies the <em>decision</em> over its committed inputs (kernel binary hash, request fingerprint, re-derived verdict, emitted bytes). It does <em>not</em> check that granted capabilities correspond to a policy-authorized target — this box accepts arbitrary target commitments (fire-your-own-target), so grants are carried as opaque commitments by design.</p>
       </div>
     </section>
 
