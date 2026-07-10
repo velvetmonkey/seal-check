@@ -420,11 +420,16 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
   if (r.emittedBytesMatch !== null && r.emittedBytesMatch !== undefined) {
     ul.append(rvLine(r.emittedBytesMatch, "emitted decision bytes byte-identical to the re-run"));
   }
+  // Neutral disclosure, not a warning: opaque commitments are how this
+  // fire-your-own-target box works, so the boundary is named, calmly.
+  if (r.hasOpaqueGrants) {
+    ul.append(rvLine(null, `${r.opaqueGrants} capability grant(s) carried as opaque target commitments — expected for this fire-your-own-target box. seal-check verifies the decision, not what the grants bind to.`));
+  }
 
   $("rv-json").textContent = JSON.stringify(receipt, null, 2);
   const s = $("rv-summary");
   s.textContent = r.allGood
-    ? "All checks passed. This receipt is genuine: the verified kernel really did make this decision, and you just reproduced it."
+    ? "All decision checks passed. The verified kernel really did produce this decision from these committed inputs, and you just reproduced it."
     : "One or more checks did not pass. Treat this receipt with suspicion.";
   s.className = "reason " + (r.allGood ? "ok" : "bad");
   $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });

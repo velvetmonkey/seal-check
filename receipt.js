@@ -106,5 +106,9 @@ export async function verifyReceipt(receipt) {
   out.allGood = out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
     out.verdictMatch === true && out.grantErrors.length === 0 &&
     out.emittedBytesMatch !== false;
+  // Informational only — gates nothing. Opaque grants are this box's defining
+  // property (fire-your-own-target accepts raw commitments), not a shortfall:
+  // the UI names the boundary instead of warning about it.
+  out.hasOpaqueGrants = out.opaqueGrants > 0;
   return out;
 }

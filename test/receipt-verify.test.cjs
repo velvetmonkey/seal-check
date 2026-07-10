@@ -53,6 +53,22 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   const ok = await R.verifyReceipt(clone());
   check("genuine receipt: allGood", ok.allGood === true, (ok.formatErrors || []).join("; "));
 
+  // Opaque grants are this box's defining property (fire-your-own-target
+  // approvals are raw commitments): surfaced informationally, never gating.
+  check("genuine receipt: 1 opaque grant counted", ok.opaqueGrants === 1, String(ok.opaqueGrants));
+  check("genuine receipt: hasOpaqueGrants true", ok.hasOpaqueGrants === true);
+
+  // A no-grant receipt (BLOCK, empty approvals) carries nothing opaque.
+  const cleanCall = { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [], now: 1000 };
+  const cleanRes = await K.decideRaw(cfg.CFG_STANDARD, cleanCall);
+  const cleanReceipt = JSON.parse(K.canonicalReceiptJson(
+    K.buildReceipt({ call: cleanCall, config: cfg.CFG_STANDARD, parsed: cleanRes.parsed, raw: cleanRes.raw, sha })));
+  const rClean = await R.verifyReceipt(cleanReceipt);
+  check("no-grant receipt: verdict BLOCK", cleanReceipt.verdict === "BLOCK");
+  check("no-grant receipt: allGood", rClean.allGood === true, (rClean.formatErrors || []).join("; "));
+  check("no-grant receipt: opaqueGrants 0", rClean.opaqueGrants === 0, String(rClean.opaqueGrants));
+  check("no-grant receipt: hasOpaqueGrants false", rClean.hasOpaqueGrants === false);
+
   // Tamper 1: verdict flipped (shape stays valid; re-derivation must catch it).
   const tVerdict = clone();
   tVerdict.verdict = tVerdict.verdict === "ALLOW" ? "BLOCK" : "ALLOW";
