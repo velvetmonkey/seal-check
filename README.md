@@ -17,15 +17,30 @@ One command serves the page. Click the tamper example and watch it fail. That's 
 <!-- truthbox:end -->
 > Map: [EVALUATOR-START.md](https://github.com/velvetmonkey/seal/blob/main/EVALUATOR-START.md) · profile detail: [PROFILE.md](https://github.com/velvetmonkey/seal-host/blob/main/PROFILE.md) — both in private repos; the links resolve only for authorised evaluators.
 
-**Luxury 1-minute showcase**
+**Luxury 1-minute showcase — two honest paths**
+
+*Browser (the product):* serve the page and click the tamper example.
 
 ```bash
-bash scripts/showcase.sh
+python3 -m http.server 8000   # then open http://localhost:8000 and hit "Verify a receipt"
 ```
 
-Runs the terminal test (node test/receipt-verify.test.cjs) which prints PASS for genuine receipt, FAIL for each tamper (verdict, sha, request, bytes) with "allGood false". Visible tamper outcome without browser.
+The page bundles the audited wasm, re-runs the kernel over the exact bytes, and shows the verdict row. Genuine → PASS; tampered → FAIL. Nothing leaves the browser.
 
-The page bundles the audited wasm, re-runs the kernel, and shows the result. Nothing leaves the browser.
+*Terminal (same wasm, no browser):* `bash scripts/showcase.sh` runs `node test/receipt-verify.test.cjs`, which prints `PASS` for a genuine receipt and `FAIL` for each tamper (verdict, kernel sha, request sha, emitted bytes) with `allGood false`. Same shipped wasm under Node — the browser and terminal paths are not two different verifiers, they load the identical `wasm/seal.js`.
+
+**Paste this — a real receipt you can try right now**
+
+A genuine ALLOW receipt is shipped at [`examples/allow.receipt.json`](examples/allow.receipt.json). Paste it into the page (or open the file): every check passes, `allGood: true`.
+
+Now tamper with it: change `"verdict": "ALLOW"` to `"verdict": "BLOCK"` and re-paste. It FAILS — the kernel re-derives `ALLOW` from the receipt's own call and config, so the flipped verdict no longer matches (`verdictMatch: false`, `allGood: false`). No server, no account, no taking our word for it. Verified on this machine:
+
+```
+verifyReceipt(genuine).allGood  = true
+verifyReceipt(tampered).allGood = false   verdictMatch = false
+```
+
+The full artifact carries the `kernel_config`, `certs`, and hashes the verifier re-derives, so paste the complete [`examples/allow.receipt.json`](examples/allow.receipt.json) rather than a snippet — a partial receipt is meant to fail shape validation.
 
 <!-- TODO(asset, shot #4): real screenshot — the verdict row + decision-receipt panel
      (Allow/Block + the JSON receipt) from the live page. It IS the product; capture it,
