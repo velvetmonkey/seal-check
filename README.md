@@ -1,8 +1,10 @@
 # seal-check
 
-A static browser verifier for Seal: check a live tool-call, or replay a receipt someone handed you. **Role:** Don't trust. Verify.
+**Paste a receipt. A tampered one fails in your browser — the real kernel re-derives the verdict live. No server, no account, no faith required.**
 
-**TL;DR: paste a tool-call or a receipt, and the page re-derives the Allow/Block decision in your browser — no server, no account; a tampered receipt fails in front of you.**
+Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the proven decision procedure over the exact bytes. Genuine = PASS. Tampered = FAIL, right in front of you.
+
+One command serves the page. Click the tamper example and watch it fail. That's the product.
 
 ![Runtime](https://img.shields.io/badge/runtime-WebAssembly-654ff0)
 ![Verifier](https://img.shields.io/badge/verifier-browser-informational)
@@ -15,7 +17,15 @@ A static browser verifier for Seal: check a live tool-call, or replay a receipt 
 <!-- truthbox:end -->
 > Map: [EVALUATOR-START.md](https://github.com/velvetmonkey/seal/blob/main/EVALUATOR-START.md) · profile detail: [PROFILE.md](https://github.com/velvetmonkey/seal-host/blob/main/PROFILE.md) — both in private repos; the links resolve only for authorised evaluators.
 
-Seal makes a decision. This is where you check it, yourself, in a plain browser, trusting nobody. Paste a receipt and seal-check re-runs the same proven kernel over the same bytes and tells you whether the decision holds. No server, no account, no faith required. A genuine receipt passes; a tampered one fails in front of you. That is the whole idea: don't trust the host, don't trust us, verify.
+**Luxury 1-minute showcase**
+
+```bash
+python3 -m http.server 8000   # then visit http://localhost:8000
+```
+
+Open the page (http, not file://). Paste a receipt or click the built-in "Verify a receipt" / tamper examples. You will see the verdict recomputed live in WASM and a tampered receipt fail visibly.
+
+The page bundles the audited wasm, re-runs the kernel, and shows the result. Nothing leaves the browser.
 
 <!-- TODO(asset, shot #4): real screenshot — the verdict row + decision-receipt panel
      (Allow/Block + the JSON receipt) from the live page. It IS the product; capture it,
