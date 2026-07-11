@@ -1,6 +1,8 @@
 # seal-check
 
-A static browser verifier for Seal decisions and receipts. **Role:** Don't trust. Verify.
+A static browser verifier for Seal: check a live tool-call, or replay a receipt someone handed you. **Role:** Don't trust. Verify.
+
+**TL;DR: paste a tool-call or a receipt, and the page re-derives the Allow/Block decision in your browser — no server, no account; a tampered receipt fails in front of you.**
 
 ![Runtime](https://img.shields.io/badge/runtime-WebAssembly-654ff0)
 ![Verifier](https://img.shields.io/badge/verifier-browser-informational)
@@ -15,6 +17,13 @@ A static browser verifier for Seal decisions and receipts. **Role:** Don't trust
 
 Seal makes a decision. This is where you check it, yourself, in a plain browser, trusting nobody. Paste a receipt and seal-check re-runs the same proven kernel over the same bytes and tells you whether the decision holds. No server, no account, no faith required. A genuine receipt passes; a tampered one fails in front of you. That is the whole idea: don't trust the host, don't trust us, verify.
 
+<!-- TODO(asset, shot #4): real screenshot — the verdict row + decision-receipt panel
+     (Allow/Block + the JSON receipt) from the live page. It IS the product; capture it,
+     do not illustrate it. -->
+<!-- TODO(asset, shot #3, PROMO-GRADE): real screen-capture GIF — "Verify a TAMPERED
+     receipt" failing in front of you (the money shot from index.html §1b). -->
+
+
 ## What happens when someone hands you a decision receipt
 
 Receipts arrive as deep links: open the page with `#receipt=<base64url of the receipt JSON>` (that is how seal-live-demo hands you one) and it is re-verified in your browser — or use the "Verify a receipt" buttons on the page to watch a genuine receipt pass and a tampered one fail. The page hashes its bundled wasm, checks the pinned identity, re-runs the same kernel, and compares the emitted bytes. It also mirrors the target commitment in JavaScript: code-point-count netstrings, UTF-8 bytes, SHA-256, lowercase hex.
@@ -23,7 +32,7 @@ Nothing you paste leaves the page. The page verifies a decision artifact; it doe
 
 ## For evaluators and auditors
 
-Seal's proof story is intentionally narrow. The Lean theorems cover the mediation kernel and selected model properties. The binaries and browser artifacts are connected to that proof by reproducible conformance tests, not by a theorem about every compiled instruction.
+Seal's proof story is intentionally narrow. The Lean theorems cover the mediation kernel and selected model properties. The binaries and browser artifacts are connected to that proof by reproducible conformance tests, not by a theorem about every compiled instruction. For this page's wasm specifically, a differential harness drives identical inputs through the deployed `seal.wasm` and the proven model: currently 13/13 mediation-corpus adversarial cases agree with 0 disagreements — evidence, not a theorem ([assurance statement](docs/SEAL-ASSURANCE-STATEMENT.md)).
 
 Start with the family [claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/CLAIMS-MATRIX.md) (one table: proven / tested / assumed / not claimed) and [What Seal is NOT](https://github.com/velvetmonkey/seal-assurance-kit/blob/main/docs/WHAT-SEAL-IS-NOT.md), then [docs/PROOF-REFERENCE.md](docs/PROOF-REFERENCE.md) for theorem names and file locations, [docs/CONFORMANCE.md](docs/CONFORMANCE.md) for the byte-identity claim, and [docs/TCB.md](docs/TCB.md) for what remains trusted.
 
@@ -68,7 +77,7 @@ _All Seal-family repositories are currently private; these links resolve only fo
 - [seal-check](https://github.com/velvetmonkey/seal-check): Don't trust. Verify.
 - [seal-live-demo](https://github.com/velvetmonkey/seal-live-demo): Watch it work.
 - [seal-assurance-kit](https://github.com/velvetmonkey/seal-assurance-kit): Check your own boundary.
-- [witness-check](https://github.com/velvetmonkey/witness-check): The sufficiency analyzer. (private/proprietary)
+- [witness-check](https://github.com/velvetmonkey/witness-check): The sufficiency analyzer. (proprietary)
 - [seal-verify-action](https://github.com/velvetmonkey/seal-verify-action): Gate receipts in CI.
 
 ## Documentation
