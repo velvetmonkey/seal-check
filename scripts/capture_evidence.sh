@@ -5,6 +5,7 @@ SCRATCH="${SCRATCH:-/tmp/grok-goal-812b560f73c6/implementer}"
 mkdir -p "$SCRATCH"
 BRANCH_LOG="$SCRATCH/${REPO}-branch.log"
 DEMO_LOG="$SCRATCH/${REPO}-demo.log"
+: > "$DEMO_LOG"
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "ERROR: working tree not clean"
   git status --porcelain
