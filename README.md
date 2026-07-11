@@ -20,10 +20,10 @@ One command serves the page. Click the tamper example and watch it fail. That's 
 **Luxury 1-minute showcase**
 
 ```bash
-python3 -m http.server 8000   # then visit http://localhost:8000
+bash scripts/showcase.sh
 ```
 
-Open the page (http, not file://). Paste a receipt or click the built-in "Verify a receipt" / tamper examples. You will see the verdict recomputed live in WASM and a tampered receipt fail visibly.
+Runs the terminal test (node test/receipt-verify.test.cjs) which prints PASS for genuine receipt, FAIL for each tamper (verdict, sha, request, bytes) with "allGood false". Visible tamper outcome without browser.
 
 The page bundles the audited wasm, re-runs the kernel, and shows the result. Nothing leaves the browser.
 
