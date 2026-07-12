@@ -8,7 +8,7 @@ explicitly-authorised manual procedure (§Flip). Re-run the commands before publ
 
 ## Pinned kernel binary
 ```
-sha256(wasm/seal.wasm) = ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0
+sha256(wasm/seal.wasm) = df42cbada2297741bfeab99f222b96ac02e43a4ce8695b24922b425b8d66b1e8
 size = 3,562,510 bytes
 ```
 The page recomputes this in-browser on load (SubtleCrypto, or a bundled pure-JS

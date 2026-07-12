@@ -16,7 +16,7 @@ async function mod() {
 // kernel state, so each decision is self-contained and deterministic.
 async function decideWith(config, step, tool) {
   const M = await mod();
-  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [buildEnvelope(config), PUBKEY]));
+  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [await buildEnvelope(config), PUBKEY]));
   if (ir.ok !== true) throw new Error("seal_init failed: " + (ir.error || JSON.stringify(ir)));
   const raw = M.ccall("seal_decide", "string", ["string"], [step]);
   return parseVerdict(raw, tool);
@@ -49,7 +49,7 @@ export async function decideConfig(config, { tool, args = {}, approvals = [], vo
 // the Temporal gate (a destructive db.execute after a session.revoke). `steps` = [{tool,args,approvals}].
 export async function decideSeq(config, steps, tool) {
   const M = await mod();
-  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [buildEnvelope(config), PUBKEY]));
+  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [await buildEnvelope(config), PUBKEY]));
   if (ir.ok !== true) throw new Error("seal_init failed: " + (ir.error || JSON.stringify(ir)));
   let raw;
   steps.forEach((s, i) => { raw = M.ccall("seal_decide", "string", ["string"], [buildStepInput({ ...s, id: i + 1 })]); });

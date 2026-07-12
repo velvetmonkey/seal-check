@@ -16,6 +16,7 @@
 // ============================================================================
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const ROOT = path.resolve(__dirname, "..");
 
 globalThis.require = require;            // the wasm glue's NODE branch needs these
@@ -31,24 +32,37 @@ const SealModule = globalThis.SealModule;
 
   const F = await import(path.join(ROOT, "receipt-format.js"));
 
-  const decide = (config, call) => {
+  const decide = async (config, call) => {
     const { tool, args, approvals = [] } = call;
-    const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [cfg.buildEnvelope(config), cfg.PUBKEY]));
+    const signedConfig = await cfg.buildSignedConfig(config);
+    const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [signedConfig.envelope, signedConfig.pubkey]));
     if (ir.ok !== true) throw new Error("seal_init failed");
     const step = cfg.buildStepInput({ tool, args, approvals });
     const raw = M.ccall("seal_decide", "string", ["string"], [step]);
     return K.canonicalReceiptJson(K.buildReceipt({
-      call: { tool, args, approvals }, config, parsed: cfg.parseVerdict(raw, tool), raw, sha,
+      call: { tool, args, approvals }, config, parsed: cfg.parseVerdict(raw, tool), raw, sha, signedConfig,
     }));
   };
 
-  const block = decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
-  const allow = decide(cfg.CFG_STANDARD, { tool: "store.update", args: { op: "orset.add", key: "k1" }, approvals: [cfg.stableHash(["store.update", "store"])] });
+  const block = await decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
+  const allow = await decide(cfg.CFG_STANDARD, { tool: "store.update", args: { op: "orset.add", key: "k1" }, approvals: [cfg.stableHash(["store.update", "store"])] });
 
-  const expectSha = "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0";
+  const expectSha = "df42cbada2297741bfeab99f222b96ac02e43a4ce8695b24922b425b8d66b1e8";
   let ok = true;
   const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`); ok = ok && cond; };
   const blockR = JSON.parse(block), allowR = JSON.parse(allow);
+  const signed = await cfg.buildSignedConfig(cfg.CFG_STANDARD);
+  const nodeKey = crypto.createPrivateKey({
+    key: Buffer.from(
+      "302e020100300506032b657004220420" +
+      "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60", "hex"),
+    type: "pkcs8", format: "der",
+  });
+  const nodeSignature = crypto.sign(null, Buffer.from(signed.payload, "utf8"), nodeKey).toString("hex");
+  check("browser WebCrypto signature = Node crypto.sign signature",
+    signed.signature === nodeSignature);
+  check("signed payload is the exact compact config string",
+    signed.payload === JSON.stringify(cfg.CFG_STANDARD));
   check("block verdict = BLOCK", blockR.verdict === "BLOCK");
   check("allow verdict = ALLOW", allowR.verdict === "ALLOW");
   check("schema v2 discriminator", blockR.seal_receipt === "v2" && allowR.seal_receipt === "v2");
@@ -64,7 +78,7 @@ const SealModule = globalThis.SealModule;
     allowR.granted_capabilities.length === 1 &&
     allowR.granted_capabilities[0].target === cfg.stableHash(["store.update", "store"]));
   // determinism: re-run identical input -> byte-identical receipt
-  const block2 = decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
+  const block2 = await decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
   check("determinism: block == block2 (byte-identical)", block === block2);
 
   process.exit(ok ? 0 : 1);

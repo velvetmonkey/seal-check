@@ -10,7 +10,7 @@
 // exported symbols (seal_init / seal_decide), hashes the binary, and wraps the result.
 // All decision semantics live inside the compiled wasm; all input/output shaping is
 // reused verbatim from seal-config.js.
-import { buildEnvelope, buildStepInput, parseVerdict, PUBKEY } from "./seal-config.js";
+import { buildSignedConfig, buildStepInput, parseVerdict } from "./seal-config.js";
 import { assembleReceiptV2, canonicalRequest, canonicalRequestSha256 } from "./receipt-format.js";
 
 // --- pinned kernel identity (see AUDIT.md) ----------------------------------
@@ -18,7 +18,7 @@ import { assembleReceiptV2, canonicalRequest, canonicalRequestSha256 } from "./r
 // ONLY thing seal-check verifies in the browser. Toolchain + axioms below are
 // LABELLED provenance the public Lean proofs assert — NOT verified here, NOT
 // blended into the hash.
-export const KERNEL_WASM_SHA256 = "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0";
+export const KERNEL_WASM_SHA256 = "df42cbada2297741bfeab99f222b96ac02e43a4ce8695b24922b425b8d66b1e8";
 export const WASM_URL = "wasm/seal.wasm";
 export const LEAN_TOOLCHAIN = "leanprover/lean4:v4.28.0";
 export const KERNEL_AXIOMS = ["propext", "Classical.choice", "Quot.sound"];
@@ -106,11 +106,26 @@ export async function verifyKernelSha() {
 // Single self-contained decision (seal_init resets state, then one seal_decide).
 export async function decideRaw(config, { tool, args = {}, approvals = [], now = 1000, votes = "" }) {
   const M = await mod();
-  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [buildEnvelope(config), PUBKEY]));
+  const signedConfig = await buildSignedConfig(config);
+  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [signedConfig.envelope, signedConfig.pubkey]));
   if (ir.ok !== true) throw new Error("seal_init failed: " + (ir.error || JSON.stringify(ir)));
   const step = buildStepInput({ tool, args, approvals, now, votes });
   const raw = M.ccall("seal_decide", "string", ["string"], [step]);
-  return { raw, step, parsed: parseVerdict(raw, tool) };
+  return { raw, step, parsed: parseVerdict(raw, tool), signedConfig };
+}
+
+// Receipt verification path: replay the receipt's exact signed bytes through
+// df42. This function never signs or substitutes a local trust root.
+export async function decideSignedRaw(signedConfig, { tool, args = {}, approvals = [], now = 1000, votes = "" }) {
+  const M = await mod();
+  const envelope = JSON.stringify({ payload: signedConfig.payload, signature: signedConfig.signature });
+  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [envelope, signedConfig.pubkey]));
+  if (ir.ok !== true) {
+    return { signature_valid: false, initError: ir.error || JSON.stringify(ir) };
+  }
+  const step = buildStepInput({ tool, args, approvals, now, votes });
+  const raw = M.ccall("seal_decide", "string", ["string"], [step]);
+  return { signature_valid: true, raw, step, parsed: parseVerdict(raw, tool) };
 }
 
 // Ordered multi-step session in ONE init (the stateful kernels — temporal,
@@ -118,14 +133,15 @@ export async function decideRaw(config, { tool, args = {}, approvals = [], now =
 // `steps` = [{tool, args, approvals?, now?}].
 export async function decideSeqRaw(config, steps, tool) {
   const M = await mod();
-  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [buildEnvelope(config), PUBKEY]));
+  const signedConfig = await buildSignedConfig(config);
+  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [signedConfig.envelope, signedConfig.pubkey]));
   if (ir.ok !== true) throw new Error("seal_init failed: " + (ir.error || JSON.stringify(ir)));
   let raw, step;
   steps.forEach((s, i) => {
     step = buildStepInput({ ...s, id: i + 1 });
     raw = M.ccall("seal_decide", "string", ["string"], [step]);
   });
-  return { raw, step, parsed: parseVerdict(raw, tool) };
+  return { raw, step, parsed: parseVerdict(raw, tool), signedConfig };
 }
 
 // --- receipt (schema v2, two strictly-separate, labelled blocks) -------------
@@ -144,7 +160,7 @@ export async function decideSeqRaw(config, steps, tool) {
 // v2 approval block: targets pasted by a human into this page are an
 // "interactive" channel approval with no nonce/issued_at/expiry to assert;
 // args_hash and approval.policy_hash are derived inside the seam.
-export function buildReceipt({ call, config, parsed, raw, sha }) {
+export function buildReceipt({ call, config, parsed, raw, sha, signedConfig }) {
   const verdict = parsed.verdict === "DENY" ? "BLOCK" : parsed.verdict; // ALLOW | BLOCK | ERROR
   const authorization = verdict === "ALLOW"
     ? ((call.approvals || []).length ? "approval" : "explicit_policy_allow")
@@ -180,6 +196,11 @@ export function buildReceipt({ call, config, parsed, raw, sha }) {
       note:
         "What the public Lean proofs ASSERT about the kernel source. NOT verified in " +
         "your browser and NOT part of the hash above.",
+    },
+    signed_config: {
+      payload: signedConfig.payload,
+      signature: signedConfig.signature,
+      pubkey: signedConfig.pubkey,
     },
     kernel_config: config,
     granted_capabilities: (call.approvals || []).map((t) => ({ target: String(t) })),

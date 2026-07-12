@@ -12,7 +12,9 @@
 // Run:  node test/receipt-verify.test.cjs
 // ============================================================================
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const ROOT = path.resolve(__dirname, "..");
 
 // --- browser shims (same wasm-glue pattern as cross-receipt.test.cjs) -------
@@ -46,12 +48,19 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   const sha = await K.verifyKernelSha();
   check("kernel self-verified against pin", sha.match);
   const genuine = JSON.parse(K.canonicalReceiptJson(
-    K.buildReceipt({ call, config: cfg.CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha })));
+    K.buildReceipt({ call, config: cfg.CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha, signedConfig: res.signedConfig })));
   const clone = () => JSON.parse(JSON.stringify(genuine));
 
   // Baseline: the genuine receipt verifies.
-  const ok = await R.verifyReceipt(clone());
-  check("genuine receipt: allGood", ok.allGood === true, (ok.formatErrors || []).join("; "));
+  const unpinned = await R.verifyReceipt(clone());
+  check("genuine receipt: signature valid", unpinned.signature_valid === true, unpinned.rederiveError || "");
+  check("genuine receipt: replay consistent", unpinned.kernel_replay_consistent === true);
+  check("genuine receipt: unpinned is not allGood", unpinned.outcome === "unpinned" && unpinned.allGood === false);
+  check("genuine receipt: freshness carried, rollback deferred",
+    unpinned.config_freshness?.value === 1 && unpinned.config_freshness.rollback_enforced === false);
+  const ok = await R.verifyReceipt(clone(), { expectedConfigPubkey: cfg.PUBKEY });
+  check("genuine receipt: pinned authority authorised", ok.authority_trusted === true && ok.outcome === "authorised" && ok.allGood === true,
+    (ok.formatErrors || []).join("; "));
 
   // Opaque grants are this box's defining property (fire-your-own-target
   // approvals are raw commitments): surfaced informationally, never gating.
@@ -62,12 +71,56 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   const cleanCall = { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [], now: 1000 };
   const cleanRes = await K.decideRaw(cfg.CFG_STANDARD, cleanCall);
   const cleanReceipt = JSON.parse(K.canonicalReceiptJson(
-    K.buildReceipt({ call: cleanCall, config: cfg.CFG_STANDARD, parsed: cleanRes.parsed, raw: cleanRes.raw, sha })));
-  const rClean = await R.verifyReceipt(cleanReceipt);
+    K.buildReceipt({ call: cleanCall, config: cfg.CFG_STANDARD, parsed: cleanRes.parsed, raw: cleanRes.raw, sha, signedConfig: cleanRes.signedConfig })));
+  const rClean = await R.verifyReceipt(cleanReceipt, { expectedConfigPubkey: cfg.PUBKEY });
   check("no-grant receipt: verdict BLOCK", cleanReceipt.verdict === "BLOCK");
   check("no-grant receipt: allGood", rClean.allGood === true, (rClean.formatErrors || []).join("; "));
   check("no-grant receipt: opaqueGrants 0", rClean.opaqueGrants === 0, String(rClean.opaqueGrants));
   check("no-grant receipt: hasOpaqueGrants false", rClean.hasOpaqueGrants === false);
+
+  // Authority is independent of crypto + replay: a wrong pin leaves those
+  // dimensions true but hard-fails the overall outcome.
+  const wrongPin = await R.verifyReceipt(clone(), { expectedConfigPubkey: "0".repeat(64) });
+  check("wrong pin: signature remains valid", wrongPin.signature_valid === true);
+  check("wrong pin: replay remains consistent", wrongPin.kernel_replay_consistent === true);
+  check("wrong pin: unauthorised failure", wrongPin.authority_trusted === false && wrongPin.outcome === "failure" && wrongPin.allGood === false);
+
+  const tSig = clone();
+  tSig.signed_config.signature = flipHexChar(tSig.signed_config.signature);
+  const rSig = await R.verifyReceipt(tSig, { expectedConfigPubkey: cfg.PUBKEY });
+  check("tampered config signature: signature_valid false", rSig.signature_valid === false);
+  check("tampered config signature: verdict not re-derived", rSig.verdictMatch === null && rSig.kernel_replay_consistent === false);
+
+  const tPayload = clone();
+  tPayload.signed_config.payload = tPayload.signed_config.payload.replace('"epoch":1', '"epoch":2');
+  const rPayload = await R.verifyReceipt(tPayload, { expectedConfigPubkey: cfg.PUBKEY });
+  check("flipped payload byte: binding fails", rPayload.bindingOk === false);
+  check("flipped payload byte: verdict not re-derived", rPayload.verdictMatch === null && rPayload.kernel_replay_consistent === false);
+
+  const tSwap = clone();
+  tSwap.kernel_config.epoch = 2;
+  const rSwap = await R.verifyReceipt(tSwap, { expectedConfigPubkey: cfg.PUBKEY });
+  check("swapped displayed config: hard fails before replay",
+    (rSwap.formatOk === false || rSwap.bindingOk === false) && rSwap.kernel_replay_consistent === false && rSwap.allGood === false);
+
+  const tPolicyHash = clone();
+  tPolicyHash.approval.policy_hash = "0".repeat(64);
+  const rPolicyHash = await R.verifyReceipt(tPolicyHash, { expectedConfigPubkey: cfg.PUBKEY });
+  check("approval policy_hash mismatch: rejected", rPolicyHash.formatOk === false && rPolicyHash.allGood === false);
+
+  const tAuthority = clone(); tAuthority.authority_trusted = true;
+  const rAuthority = await R.verifyReceipt(tAuthority, { expectedConfigPubkey: cfg.PUBKEY });
+  check("receipt-supplied authority_trusted: rejected", rAuthority.formatOk === false && rAuthority.allGood === false);
+
+  const withHostIdentity = clone();
+  withHostIdentity.host_identity = {
+    native_executable_sha256: "a".repeat(64), lean_ffi_sha256: "b".repeat(64), equivalence: "not_proven",
+  };
+  const rHost = await R.verifyReceipt(withHostIdentity, { expectedConfigPubkey: cfg.PUBKEY });
+  check("valid-hex host_identity remains asserted/unbound", rHost.outcome === "authorised");
+  withHostIdentity.host_identity.native_executable_sha256 = "nothex";
+  const rBadHost = await R.verifyReceipt(withHostIdentity, { expectedConfigPubkey: cfg.PUBKEY });
+  check("malformed host_identity rejected", rBadHost.formatOk === false && rBadHost.allGood === false);
 
   // Tamper 1: verdict flipped (shape stays valid; re-derivation must catch it).
   const tVerdict = clone();
@@ -133,6 +186,26 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   let threw = false;
   try { R.b64urlToStr("!!!not-base64url!!!"); } catch { threw = true; }
   check("b64url: malformed input throws (caught by the UI as a decode error)", threw);
+
+  // CLI contract mirrors the authority tri-state all the way to process exit.
+  const cliDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-cli-"));
+  const cliReceipt = path.join(cliDir, "allow.json");
+  fs.writeFileSync(cliReceipt, K.canonicalReceiptJson(genuine));
+  const cli = (...args) => spawnSync(process.execPath,
+    [path.join(ROOT, "test", "verify-file.cjs"), ...args], { encoding: "utf8" });
+  let cliRun = cli(cliReceipt, "--expected-config-pubkey", cfg.PUBKEY);
+  check("verify-file CLI: matching pin exits 0/AUTHORISED",
+    cliRun.status === 0 && cliRun.stdout.includes("AUTHORISED: signed by pinned operator key"));
+  cliRun = cli(cliReceipt);
+  check("verify-file CLI: absent pin exits 3/UNPINNED",
+    cliRun.status === 3 && cliRun.stdout.includes("AUTHENTIC + REPLAY-CONSISTENT, authority NOT established"));
+  cliRun = cli(cliReceipt, "--expected-config-pubkey", "0".repeat(64));
+  check("verify-file CLI: wrong pin exits 1/unauthorised",
+    cliRun.status === 1 && cliRun.stderr.includes("FAIL unauthorised config signer"));
+  cliRun = cli(cliReceipt, "--expected-config-pubkey", "bad");
+  check("verify-file CLI: malformed pin exits 2/usage",
+    cliRun.status === 2 && cliRun.stderr.includes("usage:"));
+  fs.rmSync(cliDir, { recursive: true, force: true });
 
   console.log(failures === 0 ? "\nRECEIPT-VERIFY (negative paths) PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);

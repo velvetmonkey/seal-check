@@ -54,6 +54,7 @@ button.ex { font-size: 12px; padding: 6px 10px; }
 .v-block { color: var(--bad); } .v-allow { color: var(--ok); } .v-error { color: var(--warn); }
 .deny-kernel { color: var(--muted); font-family: var(--mono); font-size: 13px; }
 .reason { margin: 6px 0 14px; }
+.reason.warn { color: #9a6700; font-weight: 600; }
 
 details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }

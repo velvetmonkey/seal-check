@@ -21,6 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const FIXTURE = path.join(__dirname, "fixtures", "cross-receipt.json");
+const EXAMPLE = path.join(ROOT, "examples", "allow.receipt.json");
 
 // --- browser shims (same wasm-glue pattern as receipt-harness.cjs) ----------
 globalThis.require = require;
@@ -51,7 +52,7 @@ function check(name, cond, detail = "") {
   const res = await K.decideRaw(cfg.CFG_STANDARD, call);
   const sha = await K.verifyKernelSha();
   check("kernel self-verified against pin", sha.match);
-  const receipt = K.buildReceipt({ call, config: cfg.CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha });
+  const receipt = K.buildReceipt({ call, config: cfg.CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha, signedConfig: res.signedConfig });
   const json = K.canonicalReceiptJson(receipt);
 
   // Pin the fixture (byte-stable: same input -> identical bytes).
@@ -59,19 +60,25 @@ function check(name, cond, detail = "") {
     fs.mkdirSync(path.dirname(FIXTURE), { recursive: true });
     fs.writeFileSync(FIXTURE, json);
     console.log(`wrote ${FIXTURE}`);
+    fs.mkdirSync(path.dirname(EXAMPLE), { recursive: true });
+    fs.writeFileSync(EXAMPLE, json);
+    console.log(`wrote ${EXAMPLE}`);
   }
   check("receipt byte-identical to committed fixture", json === fs.readFileSync(FIXTURE, "utf8"),
     "regenerate with --update if the producer changed intentionally");
 
   // Verify through the SHIPPED verifier.
-  const out = await R.verifyReceipt(JSON.parse(json));
+  const out = await R.verifyReceipt(JSON.parse(json), { expectedConfigPubkey: cfg.PUBKEY });
   check("verifyReceipt: schema valid (v2)", out.formatOk && out.formatVersion === "v2",
     (out.formatErrors || []).join("; "));
   check("verifyReceipt: kernel sha match", out.kernelShaMatch === true);
   check("verifyReceipt: request hash match", out.requestHashMatch === true);
   check("verifyReceipt: verdict re-derived (ALLOW)", out.verdictMatch === true && out.rederived === "ALLOW");
   check("verifyReceipt: emitted bytes byte-identical", out.emittedBytesMatch === true);
-  check("verifyReceipt: allGood", out.allGood === true);
+  check("verifyReceipt: real config signature accepted", out.signature_valid === true);
+  check("verifyReceipt: replay consistent", out.kernel_replay_consistent === true);
+  check("verifyReceipt: pinned authority trusted", out.authority_trusted === true);
+  check("verifyReceipt: authorised/allGood", out.outcome === "authorised" && out.allGood === true);
 
   console.log(failures === 0 ? "\nCROSS-RECEIPT (seal-check half) PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);

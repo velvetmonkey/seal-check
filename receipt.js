@@ -8,9 +8,9 @@
 // Accepts schema v1 (seal_receipt) and the legacy v0-live dialect
 // (seal_live_receipt) per docs/DECISION-RECEIPT-SCHEMA.md; legacy
 // Schema K objects are rejected with the spec's regenerate error.
-import { decideRaw, verifyKernelSha } from "./kernel.js";
+import { decideSignedRaw, verifyKernelSha } from "./kernel.js";
 import {
-  canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, validateReceipt,
+  canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, sha256Hex, validateReceipt,
 } from "./receipt-format.js";
 
 export function b64urlToStr(s) {
@@ -47,8 +47,17 @@ export function decodeReceiptParam() {
 // Independently verify a receipt. Returns { formatOk, kernelShaMatch,
 // requestHashMatch, rederived, verdictMatch, mediated, allGood, ... } — every
 // field recomputed locally per the spec's §7 verifier obligations.
-export async function verifyReceipt(receipt) {
-  const out = { receipt };
+export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
+  const out = {
+    receipt,
+    signature_valid: false,
+    kernel_replay_consistent: false,
+    authority_trusted: false,
+    config_freshness: null,
+    outcome: "failure",
+    allGood: false,
+    bindingErrors: [],
+  };
 
   // 0. Shape first: version discriminator, field table, hard-split rule,
   //    stored-line-vs-derived-line equality. A malformed receipt never
@@ -57,17 +66,29 @@ export async function verifyReceipt(receipt) {
   out.formatOk = shape.ok;
   out.formatVersion = shape.version;
   out.formatErrors = shape.errors;
-  if (!shape.ok) { out.mediated = null; out.allGood = false; return out; }
+  if (!shape.ok) { out.mediated = null; return out; }
 
   // 1. Bypass receipts record that seal was REMOVED from the path. There is
   //    no kernel verdict to verify — report NOT MEDIATED, never "verified".
   if (receipt.bypass) {
     out.mediated = false;
     out.notMediated = "bypass receipt — seal was removed from the path; no kernel verdict exists";
-    out.allGood = false;
     return out;
   }
   out.mediated = true;
+
+  const signedConfig = receipt.signed_config;
+  const pinSupplied = expectedConfigPubkey !== undefined;
+  if (pinSupplied && (typeof expectedConfigPubkey !== "string" || !/^[0-9a-f]{64}$/.test(expectedConfigPubkey))) {
+    out.pinError = "expectedConfigPubkey must be 64 lowercase hex characters";
+  } else if (!signedConfig || typeof signedConfig.pubkey !== "string") {
+    out.authority_trusted = false;
+  } else if (!pinSupplied) {
+    out.authority_trusted = "unpinned";
+  } else {
+    out.authority_trusted = expectedConfigPubkey === signedConfig.pubkey;
+    if (!out.authority_trusted) out.pinError = "unauthorised config signer";
+  }
 
   // 2. The kernel binary in this browser is the audited one, AND it is the same
   //    binary the receipt names.
@@ -82,30 +103,67 @@ export async function verifyReceipt(receipt) {
   out.requestLine = canonicalRequest(receipt.tool, receipt.arguments);
   out.requestHashMatch = out.requestHash === receipt.canonical_request_sha256;
 
-  // 4. Re-derive the verdict through the same kernel with the receipt's own
-  //    policy. Approval targets recomputed per §3 (un-hashed entries via the
-  //    policy target spec; opaque {target} entries verbatim, counted).
+  // 4. Bind the displayed config to the exact bytes authenticated by df42.
+  //    No binding failure is allowed to reach seal_decide.
+  let signedPayload = null;
+  let freshnessCandidate = null;
+  if (!signedConfig || typeof signedConfig.payload !== "string") {
+    out.bindingErrors.push("signed_config payload unavailable");
+  } else {
+    try {
+      signedPayload = JSON.parse(signedConfig.payload);
+      if (JSON.stringify(signedPayload) !== signedConfig.payload)
+        out.bindingErrors.push("signed_config.payload is not its byte-identical compact reconstruction");
+      if (JSON.stringify(receipt.kernel_config) !== signedConfig.payload)
+        out.bindingErrors.push("kernel_config does not byte-equal signed_config.payload");
+      if (receipt.approval && receipt.approval.policy_hash !==
+          sha256Hex(new TextEncoder().encode(signedConfig.payload)))
+        out.bindingErrors.push("approval.policy_hash does not equal sha256(signed_config.payload)");
+      if (!signedPayload || !Number.isInteger(signedPayload.epoch) || signedPayload.epoch < 0) {
+        out.bindingErrors.push("signed config requires a non-negative integer epoch");
+      } else {
+        freshnessCandidate = { field: "epoch", value: signedPayload.epoch, rollback_enforced: false };
+      }
+    } catch (error) {
+      out.bindingErrors.push("signed_config.payload is not valid JSON: " + error.message);
+    }
+  }
+  out.bindingOk = out.bindingErrors.length === 0;
+
+  // 5. Resolve grants from the authenticated policy, then replay its exact
+  //    envelope through df42. The verifier never invokes the test signer.
   out.rederived = null; out.verdictMatch = null;
-  const grants = capabilityTargetsFromPolicy(receipt.kernel_config, receipt.granted_capabilities);
+  const grants = capabilityTargetsFromPolicy(signedPayload, receipt.granted_capabilities);
   out.opaqueGrants = grants.opaque;   // grants whose pre-image the producer did not hold
   out.grantErrors = grants.errors;
-  if (grants.errors.length === 0) {
+  if (out.bindingOk && grants.errors.length === 0) {
     try {
-      const res = await decideRaw(receipt.kernel_config, {
+      const res = await decideSignedRaw(signedConfig, {
         tool: receipt.tool, args: receipt.arguments, approvals: grants.approvals,
         now: receipt.now ?? 1000,
       });
-      out.rederived = res.parsed.verdict === "DENY" ? "BLOCK" : res.parsed.verdict;
-      out.rederivedReason = res.parsed.reason;
-      out.verdictMatch = out.rederived === receipt.verdict;
-      out.emittedBytesMatch = typeof receipt.emitted_bytes === "string"
-        ? res.raw === receipt.emitted_bytes : null;
+      out.signature_valid = res.signature_valid;
+      if (!res.signature_valid) {
+        out.rederiveError = "seal_init failed: " + res.initError;
+      } else {
+        out.config_freshness = freshnessCandidate;
+        out.rederived = res.parsed.verdict === "DENY" ? "BLOCK" : res.parsed.verdict;
+        out.rederivedReason = res.parsed.reason;
+        out.verdictMatch = out.rederived === receipt.verdict;
+        out.emittedBytesMatch = typeof receipt.emitted_bytes === "string"
+          ? res.raw === receipt.emitted_bytes : null;
+        out.kernel_replay_consistent = out.verdictMatch === true && out.emittedBytesMatch === true;
+      }
     } catch (e) { out.rederiveError = e.message; }
   }
 
-  out.allGood = out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
-    out.verdictMatch === true && out.grantErrors.length === 0 &&
-    out.emittedBytesMatch !== false;
+  const verificationCore = out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
+    out.bindingOk && out.grantErrors.length === 0 && out.signature_valid &&
+    out.kernel_replay_consistent;
+  out.outcome = !verificationCore || out.authority_trusted === false
+    ? "failure"
+    : out.authority_trusted === true ? "authorised" : "unpinned";
+  out.allGood = out.outcome === "authorised";
   // Informational only — gates nothing. Opaque grants are this box's defining
   // property (fire-your-own-target accepts raw commitments), not a shortfall:
   // the UI names the boundary instead of warning about it.

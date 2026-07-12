@@ -182,10 +182,11 @@ const V2_KEY_ORDER = [
   "canonical_request", "canonical_request_sha256", "bypass", "verdict",
   "authorization", "reason", "deny_kernel", "amount", "merchant", "currency", "approval",
   "certs", "emitted_bytes", "kernel_identity", "host_identity", "asserted_provenance",
-  "kernel_config", "granted_capabilities", "policy_id", "signature",
+  "signed_config", "kernel_config", "granted_capabilities", "policy_id", "signature",
 ];
 const APPROVAL_KEY_ORDER = ["approval_identity", "nonce", "issued_at", "expiry", "policy_hash"];
 const IDENTITY_KEY_ORDER = ["channel", "key_id"];
+const SIGNED_CONFIG_KEY_ORDER = ["payload", "signature", "pubkey"];
 
 function orderKeys(obj, order) {
   const out = {};
@@ -206,6 +207,7 @@ export function assembleReceiptV2(fields) {
     if (isObj(a.approval_identity)) a.approval_identity = orderKeys(a.approval_identity, IDENTITY_KEY_ORDER);
     f.approval = orderKeys(a, APPROVAL_KEY_ORDER);
   }
+  if (isObj(f.signed_config)) f.signed_config = orderKeys(f.signed_config, SIGNED_CONFIG_KEY_ORDER);
   const r = { seal_receipt: RECEIPT_SCHEMA_VERSION_V2 };
   for (const k of V2_KEY_ORDER) {
     if (k === "seal_receipt") continue;
@@ -216,6 +218,7 @@ export function assembleReceiptV2(fields) {
 
 // --- §1/§7: shape validation ---------------------------------------------------
 const HEX64 = /^[0-9a-f]{64}$/;
+const HEX128 = /^[0-9a-f]{128}$/;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
 // Structural validation against the v1/v2 field tables. Returns
@@ -225,6 +228,8 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 export function validateReceipt(r) {
   const errors = [];
   if (!isObj(r)) return { ok: false, version: null, errors: ["receipt is not an object"] };
+  if ("authority_trusted" in r)
+    errors.push("authority_trusted: verifier-computed only; forbidden in a receipt");
 
   let version = null;
   if (r.seal_receipt === RECEIPT_SCHEMA_VERSION_V2) version = "v2";
@@ -316,6 +321,22 @@ function validateV2Extras(r, errors) {
       errors.push("args_hash: does not equal sha256 of the canonical arguments serialization");
   } else if ("args_hash" in r) {
     errors.push("args_hash: must be absent on bypass");
+  }
+
+  if (r.bypass === true) {
+    if ("signed_config" in r) errors.push("signed_config: must be absent on bypass");
+  } else if (!isObj(r.signed_config)) {
+    errors.push("signed_config: object required when mediated (v2)");
+  } else {
+    const keys = Object.keys(r.signed_config);
+    if (JSON.stringify(keys) !== JSON.stringify(SIGNED_CONFIG_KEY_ORDER))
+      errors.push("signed_config: exact key order payload,signature,pubkey required");
+    if (typeof r.signed_config.payload !== "string")
+      errors.push("signed_config.payload: exact signed JSON string required");
+    if (typeof r.signed_config.signature !== "string" || !HEX128.test(r.signed_config.signature))
+      errors.push("signed_config.signature: 128-hex Ed25519 signature required");
+    if (typeof r.signed_config.pubkey !== "string" || !HEX64.test(r.signed_config.pubkey))
+      errors.push("signed_config.pubkey: 64-hex Ed25519 public key required");
   }
 
   // Approval block: v2 originally required it on every mediated ALLOW. Policy-v2

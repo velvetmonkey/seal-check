@@ -62,13 +62,15 @@ reject it as legacy, naming this spec.
 | `emitted_bytes` | string | yes when mediated | verbatim canonical `seal_decide` output |
 | `kernel_identity` | object | yes | `wasm_sha256` (64-hex, or **null iff `bypass`**), `self_verified` (boolean). HARD SPLIT: never carries toolchain/axioms in v1. See §4 |
 | `asserted_provenance` | object | optional | asserted-not-verified proof hygiene (`lean_toolchain`, `axioms`, `verified_in_browser` — MUST NOT be `true`); the only v1 home for toolchain/axioms (§4) |
+| `signed_config` | object | yes when mediated in v2 | exact `{payload, signature, pubkey}` supplied to `seal_init`; payload is the signed compact JSON string, signature is 128-hex Ed25519, pubkey is 64-hex |
 | `kernel_config` | object | yes when mediated | the exact trusted config the kernel was initialised with — re-derivation input |
 | `granted_capabilities` | array of objects | yes when mediated | the presented grants. Two entry forms (§3): **un-hashed** `{tool, <policy-selected fields>...}` when the producer holds the grant pre-image, or **opaque** `{target: "<64 lowercase hex>"}` when it does not (e.g. seal-check's fire-your-own box accepts raw targets) |
 | `policy_id` | string | optional | producer's policy label |
 | `signature` | object | optional | integrity envelope (e.g. live-demo HMAC demo key); never a substitute for re-derivation |
 
 Producer-local trailing blocks (live-demo's `execution`, `gateway`) are
-permitted; verifiers MUST ignore unknown top-level fields.
+permitted; verifiers MUST ignore unknown top-level fields except verifier-only
+authority claims such as `authority_trusted`, which MUST be rejected.
 
 ## 2. `canonical_request_sha256` — exact pre-image
 
@@ -215,12 +217,16 @@ item.)
 2. Derive the canonical line from the same `(tool, arguments)` used for
    re-derivation; check stored `canonical_request` (if present) equals it;
    hash and compare to `canonical_request_sha256`.
-3. Resolve `granted_capabilities` per §3 (recompute un-hashed entries from
-   the policy; count opaque entries); re-run the kernel with
-   `kernel_config` and the receipt's `now`; require verdict equality and
-   (when present) byte-identical `emitted_bytes`.
-4. Handle `bypass` per §6: report NOT MEDIATED, never "verified".
-5. Reject `seal_check_receipt` objects as legacy Schema K.
+3. Require byte-identical compact reconstruction of `signed_config.payload`,
+   byte equality between that payload and `JSON.stringify(kernel_config)`, and
+   (for approval receipts) `approval.policy_hash = SHA256(payload)`. Surface
+   its non-negative integer `epoch`; this carries freshness but does not enforce rollback.
+4. Resolve `granted_capabilities` from the authenticated policy; call the
+   pinned wasm's `seal_init` with the receipt's exact envelope and pubkey, then
+   require verdict and emitted-byte equality. Never re-sign in the verifier.
+5. Compute signer authority only from an independently supplied expected-key pin.
+6. Handle `bypass` per §6: report NOT MEDIATED, never "verified".
+7. Reject `seal_check_receipt` objects as legacy Schema K.
 
 ## 8. The host audit line is NOT a decision receipt
 

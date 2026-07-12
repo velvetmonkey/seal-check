@@ -23,8 +23,8 @@ const factory = require("../wasm/seal.js");
 const M = await factory({ print() {}, printErr() {} });
 const CONFIG = SCENARIOS["destructive-sql"].config; // guards db.execute destructive SQL
 
-function wasmVerdict(line, tool) {
-  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [buildEnvelope(CONFIG), PUBKEY]));
+async function wasmVerdict(line, tool) {
+  const ir = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [await buildEnvelope(CONFIG), PUBKEY]));
   if (ir.ok !== true) throw new Error("seal_init failed: " + JSON.stringify(ir));
   const step = JSON.stringify({ line, now: 1000, approvals: [], votes: "", grants: "", forecasts: "" });
   const raw = M.ccall("seal_decide", "string", ["string"], [step]);
@@ -54,7 +54,7 @@ cases.push({ name: "struct-unicode-esc", line: '{"jsonrpc":"2.0","id":1,"method"
 let pass = 0, fail = 0, disagree = 0;
 console.log("case".padEnd(22) + "wasm".padEnd(7) + "lean".padEnd(7) + "agree  expect");
 for (const c of cases) {
-  const w = norm(wasmVerdict(c.line, c.tool));
+  const w = norm(await wasmVerdict(c.line, c.tool));
   const l = norm(leanVerdict(c.line));
   const agree = w === l;
   const okExpect = w === c.expect && l === c.expect;
@@ -70,7 +70,7 @@ console.log(`\n[differential] ${pass}/${cases.length} mediated cases agree + BLO
 // So a non-tools/call line diverges by design: wasm=ALLOW(passthrough),
 // core-decide=BLOCK(no passthrough concept). Reported so it is not misread.
 const pt = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
-console.log(`\n[layer note] passthrough (tools/list): wasm=${norm(wasmVerdict(pt, "tools/list"))} host-step, lean=${norm(leanVerdict(pt))} core-decide` +
+console.log(`\n[layer note] passthrough (tools/list): wasm=${norm(await wasmVerdict(pt, "tools/list"))} host-step, lean=${norm(leanVerdict(pt))} core-decide` +
   ` — expected divergence (different layers), not a codegen fault.`);
 console.log(`(wasm = emscripten-compiled Lean host step; lean = native-compiled Lean core decide)`);
 process.exit(fail ? 1 : 0);

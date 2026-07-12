@@ -57,7 +57,7 @@ function check(name, got, want) {
     canonical_request_sha256: F.canonicalRequestSha256("db.execute", v1args),
     bypass: false, verdict: "ALLOW", authorization: "approval", reason: "every gating kernel allows", deny_kernel: null,
     certs: [], emitted_bytes: "{}",
-    kernel_identity: { wasm_sha256: "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0", self_verified: true },
+    kernel_identity: { wasm_sha256: "df42cbada2297741bfeab99f222b96ac02e43a4ce8695b24922b425b8d66b1e8", self_verified: true },
     kernel_config: { epoch: 1 },
     granted_capabilities: [{ tool: "db.execute", table: "staging_deploy_audit", operation: "insert" }],
   };
@@ -133,6 +133,9 @@ function check(name, got, want) {
       payment: { class: "payment", bind: { amount: "amount", merchant: "to", currency: "currency" } },
       target: [{ literal: "pay" }, { arg: "to" }, { arg: "amount" }] },
   ] } };
+  const signedConfig = (config) => ({
+    payload: JSON.stringify(config), signature: "a".repeat(128), pubkey: "b".repeat(64),
+  });
   check("V7 policy_hash (§11.4 example config)",
     F.canonicalJsonSha256(PAYCFG),
     "436c50ce0860d500c188e7e7c8133eed1e41e626b01174727159f3f664e84407");
@@ -152,6 +155,7 @@ function check(name, got, want) {
     },
     certs: [], emitted_bytes: "{}",
     kernel_identity: { wasm_sha256: "0".repeat(64), self_verified: true },
+    signed_config: signedConfig(PAYCFG),
     kernel_config: PAYCFG,
     granted_capabilities: [{ tool: "payments.send", to: "supplier-77", amount: 40000 }],
   };
@@ -167,7 +171,7 @@ function check(name, got, want) {
     JSON.stringify(["seal_receipt", "tool", "arguments", "args_hash", "now", "canonical_request",
       "canonical_request_sha256", "bypass", "verdict", "authorization", "reason", "deny_kernel", "amount",
       "merchant", "currency", "approval", "certs", "emitted_bytes", "kernel_identity",
-      "kernel_config", "granted_capabilities"]));
+      "signed_config", "kernel_config", "granted_capabilities"]));
 
   // --- §11.5 roundtrip obligation: assemble(parse(serialize)) byte-identical
   const ser = JSON.stringify(v2r);
@@ -177,6 +181,13 @@ function check(name, got, want) {
   // --- §11 validation: well-formed v2 passes
   r = F.validateReceipt(v2r);
   check("validateReceipt v2 well-formed", JSON.stringify([r.ok, r.version, r.errors]), JSON.stringify([true, "v2", []]));
+  r = F.validateReceipt({ ...v2r, authority_trusted: true });
+  check("v2 rejects receipt-supplied authority_trusted", r.ok, false);
+  const missingSignedConfig = { ...v2r }; delete missingSignedConfig.signed_config;
+  r = F.validateReceipt(missingSignedConfig);
+  check("v2 rejects mediated receipt without signed_config", r.ok, false);
+  r = F.validateReceipt({ ...v2r, signed_config: { ...v2r.signed_config, extra: true } });
+  check("v2 rejects extra signed_config fields", r.ok, false);
 
   // --- §11.6 recompute-and-reject
   r = F.validateReceipt({ ...v2r, args_hash: F.canonicalJsonSha256({ different: 1 }) });
@@ -202,6 +213,7 @@ function check(name, got, want) {
     canonical_request_sha256: F.canonicalRequestSha256("db.execute", dbArgs),
     certs: [], emitted_bytes: "{}",
     kernel_identity: { wasm_sha256: "0".repeat(64), self_verified: true },
+    signed_config: signedConfig(dbCfg),
     kernel_config: dbCfg, granted_capabilities: [],
   });
   r = F.validateReceipt(fab);
@@ -245,6 +257,7 @@ function check(name, got, want) {
     amount: undefined, merchant: undefined, currency: undefined,
     approval: { approval_identity: { channel: "interactive" } },
     kernel_config: { epoch: 1, safety: { tools: [{ name: "store.update", target: [{ literal: "store" }] }] } },
+    signed_config: signedConfig({ epoch: 1, safety: { tools: [{ name: "store.update", target: [{ literal: "store" }] }] } }),
     granted_capabilities: [{ target: "6bff1759cf3c00f781f0b15d428f4cf84e59f8b10be48dd4dd742175a3e6f984" }],
   });
   r = F.validateReceipt(fileOk);

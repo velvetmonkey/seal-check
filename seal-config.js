@@ -8,16 +8,47 @@
 // encoded here.
 import { stableHashParts } from "./receipt-format.js";
 
-export const PUBKEY = "demo-pk";
+// Fixed TEST-ONLY Ed25519 key from RFC 8032 test vector 1. The private seed is
+// intentionally public: this key is only the deterministic trust root for the
+// in-browser demo and its byte-stable fixtures, never an operator credential.
+// Production receipts carry their operator's independently managed public key.
+export const PUBKEY = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+const TEST_PRIVATE_KEY_PKCS8_HEX =
+  "302e020100300506032b657004220420" +
+  "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+
+const hexBytes = (hex) => Uint8Array.from(hex.match(/../g), (byte) => parseInt(byte, 16));
+const bytesHex = (bytes) => [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+let _testSigningKey = null;
+
+async function testSigningKey() {
+  if (_testSigningKey) return _testSigningKey;
+  if (!globalThis.crypto?.subtle) throw new Error("Ed25519 signing requires WebCrypto SubtleCrypto");
+  _testSigningKey = globalThis.crypto.subtle.importKey(
+    "pkcs8", hexBytes(TEST_PRIVATE_KEY_PKCS8_HEX), { name: "Ed25519" }, false, ["sign"]);
+  return _testSigningKey;
+}
 
 // SHA-256 target commitment, exact mirror of Lean Seal.stableHashParts.
 export function stableHash(parts) {
   return stableHashParts(parts);
 }
 
-export function buildEnvelope(payload, pubkey = PUBKEY) {
-  const compact = JSON.stringify(payload);
-  return JSON.stringify({ payload: compact, signature: `stub-ed25519:${pubkey}:${compact}` });
+// Real Ed25519 over the EXACT compact payload string accepted by df42 seal_init.
+// Return every value from the same signing operation so later receipt emission
+// never needs to reconstruct (and potentially drift) the signed bytes.
+export async function buildSignedConfig(config) {
+  const payload = JSON.stringify(config);
+  const signature = bytesHex(new Uint8Array(await globalThis.crypto.subtle.sign(
+    "Ed25519", await testSigningKey(), new TextEncoder().encode(payload))));
+  return {
+    payload, signature, pubkey: PUBKEY,
+    envelope: JSON.stringify({ payload, signature }),
+  };
+}
+
+export async function buildEnvelope(config) {
+  return (await buildSignedConfig(config)).envelope;
 }
 
 const safety = (tools) => ({ approval: { control_file: "X", ttl_seconds: 120 }, tools });

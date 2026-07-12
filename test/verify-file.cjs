@@ -5,9 +5,32 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
-const receiptPath = process.argv[2];
-if (!receiptPath) {
-  console.error("usage: node test/verify-file.cjs <receipt.json>");
+const USAGE = `usage: node test/verify-file.cjs <receipt.json> [--expected-config-pubkey <64-hex>]
+
+exit codes:
+  0  AUTHORISED (signature + replay valid; supplied operator pin matches)
+  1  verification, binding, replay, or signer failure
+  2  usage/CLI error
+  3  authentic + replay-consistent but UNPINNED`;
+
+const argv = process.argv.slice(2);
+if (argv.length === 1 && argv[0] === "--help") {
+  console.log(USAGE);
+  process.exit(0);
+}
+let receiptPath = null, expectedConfigPubkey;
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === "--expected-config-pubkey") {
+    if (expectedConfigPubkey !== undefined || i + 1 >= argv.length) {
+      console.error(USAGE); process.exit(2);
+    }
+    expectedConfigPubkey = argv[++i];
+  } else if (argv[i].startsWith("-") || receiptPath !== null) {
+    console.error(USAGE); process.exit(2);
+  } else receiptPath = argv[i];
+}
+if (!receiptPath || (expectedConfigPubkey !== undefined && !/^[0-9a-f]{64}$/.test(expectedConfigPubkey))) {
+  console.error(USAGE);
   process.exit(2);
 }
 
@@ -32,17 +55,34 @@ globalThis.fetch = async (p) => {
     console.error(`roundtrip keys: ${Object.keys(F.assembleReceiptV2(receipt)).join(",")}`);
     process.exit(1);
   }
-  const result = await R.verifyReceipt(receipt);
-  if (result.allGood) {
-    console.log(`PASS VERIFIED ${receiptPath}`);
+  const result = await R.verifyReceipt(receipt, { expectedConfigPubkey });
+  console.log(`signature_valid: ${result.signature_valid}`);
+  console.log(`kernel_replay_consistent: ${result.kernel_replay_consistent}`);
+  console.log(`authority_trusted: ${result.authority_trusted}`);
+  if (result.config_freshness) console.log(
+    `config_freshness: ${result.config_freshness.field}=${result.config_freshness.value}; rollback_enforced=${result.config_freshness.rollback_enforced}`);
+
+  if (result.outcome === "authorised") {
+    console.log(`AUTHORISED: signed by pinned operator key ${receiptPath}`);
     process.exit(0);
   }
-  console.error(`FAIL NOT VERIFIED ${receiptPath}`);
+  if (result.outcome === "unpinned") {
+    console.log(`AUTHENTIC + REPLAY-CONSISTENT, authority NOT established (signed by ${receipt.signed_config.pubkey}, verify ${receipt.signed_config.pubkey} out-of-band)`);
+    process.exit(3);
+  }
+  console.error(result.pinError === "unauthorised config signer"
+    ? "FAIL unauthorised config signer"
+    : `FAIL NOT VERIFIED ${receiptPath}`);
   if (result.formatErrors?.length) console.error(result.formatErrors.join("; "));
   console.error(JSON.stringify({
     formatOk: result.formatOk,
     kernelShaMatch: result.kernelShaMatch,
     requestHashMatch: result.requestHashMatch,
+    bindingOk: result.bindingOk,
+    bindingErrors: result.bindingErrors,
+    signature_valid: result.signature_valid,
+    kernel_replay_consistent: result.kernel_replay_consistent,
+    authority_trusted: result.authority_trusted,
     verdictMatch: result.verdictMatch,
     emittedBytesMatch: result.emittedBytesMatch,
     grantErrors: result.grantErrors,

@@ -1,8 +1,8 @@
 # seal-check
 
-**Paste a receipt. A tampered one fails in your browser — the real kernel re-derives the verdict live. No server, no account, no faith required.**
+**Paste a receipt. A tampered one fails in your browser — the real kernel verifies its signed config and re-derives the verdict live. No server, no account, no faith required.**
 
-Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the proven decision procedure over the exact bytes. Genuine = PASS. Tampered = FAIL, right in front of you.
+Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the proven decision procedure over the exact bytes. Genuine receipts can be authentic and replay-consistent; operator authority additionally requires an independently provisioned public-key pin.
 
 One command serves the page. Click the tamper example and watch it fail. That's the product.
 
@@ -14,26 +14,33 @@ One command serves the page. Click the tamper example and watch it fail. That's 
 python3 -m http.server 8000   # then open http://localhost:8000 and hit "Verify a receipt"
 ```
 
-The page bundles the audited wasm, re-runs the kernel over the exact bytes, and shows the verdict row. Genuine → PASS; tampered → FAIL. Nothing leaves the browser.
+The page bundles the audited wasm, re-runs the kernel over the exact bytes, and shows the verdict row. Browser deep links are deliberately **UNPINNED**: they verify signature and replay consistency but do not establish operator authority. Nothing leaves the browser.
 
 ## Two honest paths
 
 **Luxury 1-minute showcase — two honest paths**
 
-*Terminal (same wasm, no browser):* `bash scripts/showcase.sh` runs `node test/receipt-verify.test.cjs`, which prints `PASS` for a genuine receipt and `FAIL` for each tamper (verdict, kernel sha, request sha, emitted bytes) with `allGood false`. Same shipped wasm under Node — the browser and terminal paths are not two different verifiers, they load the identical `wasm/seal.js`.
+*Terminal (same wasm, no browser):* `node test/verify-file.cjs <receipt> --expected-config-pubkey <independently-provisioned-public-key>` exits 0 only when signature, replay, bindings, and the relying-party pin all agree. Unpinned consistency exits 3; verification failure exits 1. The browser and terminal load the identical `wasm/seal.js`.
 
 **Paste this — a real receipt you can try right now**
 
-A genuine ALLOW receipt is shipped at [`examples/allow.receipt.json`](examples/allow.receipt.json). Paste it into the page (or open the file): every check passes, `allGood: true`.
+A genuine ALLOW receipt is shipped at [`examples/allow.receipt.json`](examples/allow.receipt.json). Paste it into the page: signature and replay pass, while authority remains visibly unpinned. For the deterministic test receipt, independently pin its documented test public key when exercising the authorised CLI leg.
 
 Now tamper with it: change `"verdict": "ALLOW"` to `"verdict": "BLOCK"` and re-paste. It FAILS — the kernel re-derives `ALLOW` from the receipt's own call and config, so the flipped verdict no longer matches (`verdictMatch: false`, `allGood: false`). No server, no account, no taking our word for it. Verified on this machine:
 
 ```
-verifyReceipt(genuine).allGood  = true
+verifyReceipt(genuine).outcome = "unpinned"   allGood = false
+verifyReceipt(genuine, { expectedConfigPubkey }).outcome = "authorised"   allGood = true
 verifyReceipt(tampered).allGood = false   verdictMatch = false
 ```
 
-The full artifact carries the `kernel_config`, `certs`, and hashes the verifier re-derives, so paste the complete [`examples/allow.receipt.json`](examples/allow.receipt.json) rather than a snippet — a partial receipt is meant to fail shape validation.
+The full artifact carries the exact `signed_config`, `kernel_config`, `certs`, and hashes the verifier re-derives, so paste the complete [`examples/allow.receipt.json`](examples/allow.receipt.json) rather than a snippet — a partial receipt is meant to fail shape validation.
+
+### Authority boundary
+
+`signature_valid` means the config was signed by the holder of public key P. It does **not** establish that P is your operator. `authority_trusted` becomes true only when the relying party supplies `expected-config-pubkey` from an independent deploy trust file, CI configuration/secret, or environment—not from the receipt or signed policy. The public pin is non-sensitive; the operator's private signing key is crown-jewel TCB. A single-tenant deployment signs policy with its private key and separately pins the public key in verifier deployment configuration.
+
+Receipt replay proves receipt↔kernel consistency. The separate 13/13 wasm-versus-Lean differential is the correctness evidence. The signed config carries `epoch`, which the verifier surfaces, but rollback of an older valid signed config remains possible until a stateful relying party enforces a high-water mark.
 
 ![Runtime](https://img.shields.io/badge/runtime-WebAssembly-654ff0)
 ![Verifier](https://img.shields.io/badge/verifier-browser-informational)
@@ -55,7 +62,7 @@ The full artifact carries the `kernel_config`, `certs`, and hashes the verifier 
 
 ## What happens when someone hands you a decision receipt
 
-Receipts arrive as deep links: open the page with `#receipt=<base64url of the receipt JSON>` (that is how seal-live-demo hands you one) and it is re-verified in your browser — or use the "Verify a receipt" buttons on the page to watch a genuine receipt pass and a tampered one fail. The page hashes its bundled wasm, checks the pinned identity, re-runs the same kernel, and compares the emitted bytes. It also mirrors the target commitment in JavaScript: code-point-count netstrings, UTF-8 bytes, SHA-256, lowercase hex.
+Receipts arrive as deep links: open the page with `#receipt=<base64url of the receipt JSON>` and it is re-verified in your browser. The page hashes its bundled wasm, verifies the receipt's real Ed25519 config signature, binds the displayed config to the exact signed payload, re-runs the same kernel, and compares the emitted bytes. Because a browser deep link has no independently provisioned key pin, it reports authentic + replay-consistent but unpinned, never authorised.
 
 Nothing you paste leaves the page. The page verifies a decision artifact; it does not certify that your whole deployment is correctly wired through Seal.
 

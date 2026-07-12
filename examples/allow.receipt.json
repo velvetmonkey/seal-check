@@ -11,6 +11,7 @@
   "canonical_request_sha256": "c423e524f58c6bfff5e750dabd761795af1afc08ba895dd2322729f424f941ca",
   "bypass": false,
   "verdict": "ALLOW",
+  "authorization": "approval",
   "reason": "every gating kernel allows",
   "deny_kernel": null,
   "approval": {
@@ -41,7 +42,7 @@
   ],
   "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"8945306314002133198\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"6bff1759cf3c00f781f0b15d428f4cf84e59f8b10be48dd4dd742175a3e6f984\\\",\\\"verdict\\\":\\\"allow\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"},{\\\"certHash\\\":\\\"359907721516049332\\\",\\\"kernel\\\":\\\"convergence\\\",\\\"reason\\\":\\\"convergent op admitted: orset.add\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"tool\\\":\\\"store.update\\\",\\\"verdict\\\":\\\"allow\\\"}\",\"route\":\"forward\"}",
   "kernel_identity": {
-    "wasm_sha256": "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0",
+    "wasm_sha256": "df42cbada2297741bfeab99f222b96ac02e43a4ce8695b24922b425b8d66b1e8",
     "self_verified": true,
     "note": "Binary identity of the evaluator actually executed. Hashed in your browser from the loaded bytes and compared to a pinned constant. This is the ONLY thing verified here."
   },
@@ -54,6 +55,11 @@
       "Quot.sound"
     ],
     "note": "What the public Lean proofs ASSERT about the kernel source. NOT verified in your browser and NOT part of the hash above."
+  },
+  "signed_config": {
+    "payload": "{\"epoch\":1,\"safety\":{\"approval\":{\"control_file\":\"X\",\"ttl_seconds\":120},\"tools\":[{\"name\":\"db.execute\",\"mode\":\"guarded\",\"match\":{\"type\":\"contains_any_ci\",\"arg\":\"sql\",\"needles\":[\"drop\",\"delete\",\"truncate\"]},\"target\":[{\"literal\":\"db\"},{\"arg\":\"database\"},{\"literal\":\"write\"},{\"arg\":\"sql\"}]},{\"name\":\"payments.send\",\"mode\":\"guarded\",\"match\":{\"type\":\"always\"},\"target\":[{\"literal\":\"pay\"}]},{\"name\":\"session.revoke\",\"mode\":\"guarded\",\"match\":{\"type\":\"always\"},\"target\":[{\"literal\":\"revoke\"}]},{\"name\":\"store.update\",\"mode\":\"guarded\",\"match\":{\"type\":\"always\"},\"target\":[{\"literal\":\"store\"}]},{\"name\":\"key.use\",\"mode\":\"guarded\",\"match\":{\"type\":\"always\"},\"target\":[{\"literal\":\"key\"}]},{\"name\":\"approve\",\"mode\":\"deny\",\"match\":{\"type\":\"always\"},\"target\":[]}]},\"temporal\":{\"policies\":[]},\"consensus\":{\"roster\":[1,2,3],\"votes_file\":\"X\",\"high_stakes\":[\"payments.send\"]},\"convergence\":{\"tools\":[{\"tool\":\"store.update\",\"op_arg\":\"op\"}]}}",
+    "signature": "77d06738955b6f6bc68cf83c7fdda9bbf1242f4a383e3bd059c9c9122e6ede5e650d074011cae481dac33d24dabf60047220ef06f6ac3cf091d2d924c10f3b06",
+    "pubkey": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
   },
   "kernel_config": {
     "epoch": 1,

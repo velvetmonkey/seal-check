@@ -163,7 +163,7 @@ async function runInput() {
   try { res = await decideRaw(CFG_STANDARD, call); }
   catch (e) { $("run-error").textContent = "kernel error: " + e.message; return; }
 
-  const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA });
+  const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA, signedConfig: res.signedConfig });
 
   paintVerdict($("verdict"), $("deny-kernel"), res.parsed);
   $("reason").textContent = res.parsed.reason;
@@ -179,7 +179,7 @@ async function runInput() {
     rerun: async () => {
       const r2 = await decideRaw(CFG_STANDARD, call);
       return canonicalReceiptJson(buildReceipt({
-        call, config: CFG_STANDARD, parsed: r2.parsed, raw: r2.raw, sha: SHA,
+        call, config: CFG_STANDARD, parsed: r2.parsed, raw: r2.raw, sha: SHA, signedConfig: r2.signedConfig,
       }));
     },
   };
@@ -412,6 +412,12 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
   const ul = $("rv-checks"); ul.textContent = "";
   ul.append(rvLine(r.kernelShaMatch, `kernel binary self-verified (sha256 ${r.kernelSha.slice(0, 12)}…, matches the receipt)`));
   ul.append(rvLine(r.requestHashMatch, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…)`));
+  ul.append(rvLine(r.bindingOk, r.bindingOk
+    ? "signed config bytes bind exactly to the displayed kernel_config"
+    : `signed config binding failed: ${(r.bindingErrors || []).join("; ")}`));
+  ul.append(rvLine(r.signature_valid, r.signature_valid
+    ? `signature_valid: signed by holder of ${receipt.signed_config.pubkey.slice(0, 12)}…`
+    : "signature_valid: false"));
   if (r.verdictMatch === null) {
     ul.append(rvLine(null, receipt.bypass ? "verdict not re-derivable: this receipt had the gate switched OFF (the control)" : "verdict not re-derivable (receipt carries no policy)"));
   } else {
@@ -420,6 +426,16 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
   if (r.emittedBytesMatch !== null && r.emittedBytesMatch !== undefined) {
     ul.append(rvLine(r.emittedBytesMatch, "emitted decision bytes byte-identical to the re-run"));
   }
+  ul.append(rvLine(r.kernel_replay_consistent, `kernel_replay_consistent: ${r.kernel_replay_consistent}`));
+  const freshness = r.config_freshness;
+  if (freshness) ul.append(rvLine(null,
+    `config freshness carried: ${freshness.field}=${freshness.value}; rollback enforcement=${freshness.rollback_enforced}`));
+  ul.append(rvLine(r.authority_trusted === true ? true : r.authority_trusted === false ? false : null,
+    r.authority_trusted === true
+      ? "authority_trusted: pinned operator key"
+      : r.authority_trusted === "unpinned"
+        ? `authority_trusted: UNPINNED — verify ${receipt.signed_config.pubkey} out-of-band`
+        : "authority_trusted: false"));
   // Neutral disclosure, not a warning: opaque commitments are how this
   // fire-your-own-target box works, so the boundary is named, calmly.
   if (r.hasOpaqueGrants) {
@@ -428,10 +444,16 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
 
   $("rv-json").textContent = JSON.stringify(receipt, null, 2);
   const s = $("rv-summary");
-  s.textContent = r.allGood
-    ? "All decision checks passed. The verified kernel really did produce this decision from these committed inputs, and you just reproduced it."
-    : "One or more checks did not pass. Treat this receipt with suspicion.";
-  s.className = "reason " + (r.allGood ? "ok" : "bad");
+  if (r.outcome === "authorised") {
+    s.textContent = "AUTHORISED: signed by pinned operator key.";
+    s.className = "reason ok";
+  } else if (r.outcome === "unpinned") {
+    s.textContent = `AUTHENTIC + REPLAY-CONSISTENT, authority NOT established (signed by ${receipt.signed_config.pubkey}, verify it out-of-band).`;
+    s.className = "reason warn";
+  } else {
+    s.textContent = "One or more checks did not pass. Treat this receipt with suspicion.";
+    s.className = "reason bad";
+  }
   $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -451,7 +473,7 @@ async function demoReceipt(tamper) {
   try {
     const call = parseCall(EXAMPLES.allow);
     const res = await decideRaw(CFG_STANDARD, call);
-    const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA });
+    const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA, signedConfig: res.signedConfig });
     if (tamper) receipt.verdict = receipt.verdict === "ALLOW" ? "BLOCK" : "ALLOW";
     await renderVerifiedReceipt(receipt, {
       focus: false,
