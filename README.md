@@ -6,18 +6,7 @@ Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the p
 
 One command serves the page. Click the tamper example and watch it fail. That's the product.
 
-![Runtime](https://img.shields.io/badge/runtime-WebAssembly-654ff0)
-![Verifier](https://img.shields.io/badge/verifier-browser-informational)
-![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-
-<!-- truthbox:begin -->
-> **Runtime profile: `compatible`.** Strict `canonical-l0` is proved and modelled, not the deployed route yet.
-> **Claim:** policy-covered request-effects recognised by the compatible MCP boundary require a matching live human approval and an allowing Lean kernel verdict; seam failures block; every decision emits replayable evidence.
-> **Non-claim:** the deployed host is not proved end to end, and canonical parser rejection is not currently the runtime gate. Host `ApprovalRecord` tokens are a separate signed channel from the v2 canonical approval tuple.
-<!-- truthbox:end -->
-> Map: [EVALUATOR-START.md](https://github.com/velvetmonkey/seal/blob/main/EVALUATOR-START.md) · profile detail: [PROFILE.md](https://github.com/velvetmonkey/seal-host/blob/main/PROFILE.md) — both in private repos; the links resolve only for authorised evaluators.
-
-**Luxury 1-minute showcase — two honest paths**
+## Quick start: verify, then tamper
 
 *Browser (the product):* serve the page and click the tamper example.
 
@@ -26,6 +15,10 @@ python3 -m http.server 8000   # then open http://localhost:8000 and hit "Verify 
 ```
 
 The page bundles the audited wasm, re-runs the kernel over the exact bytes, and shows the verdict row. Genuine → PASS; tampered → FAIL. Nothing leaves the browser.
+
+## Two honest paths
+
+**Luxury 1-minute showcase — two honest paths**
 
 *Terminal (same wasm, no browser):* `bash scripts/showcase.sh` runs `node test/receipt-verify.test.cjs`, which prints `PASS` for a genuine receipt and `FAIL` for each tamper (verdict, kernel sha, request sha, emitted bytes) with `allGood false`. Same shipped wasm under Node — the browser and terminal paths are not two different verifiers, they load the identical `wasm/seal.js`.
 
@@ -41,6 +34,17 @@ verifyReceipt(tampered).allGood = false   verdictMatch = false
 ```
 
 The full artifact carries the `kernel_config`, `certs`, and hashes the verifier re-derives, so paste the complete [`examples/allow.receipt.json`](examples/allow.receipt.json) rather than a snippet — a partial receipt is meant to fail shape validation.
+
+![Runtime](https://img.shields.io/badge/runtime-WebAssembly-654ff0)
+![Verifier](https://img.shields.io/badge/verifier-browser-informational)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+
+<!-- truthbox:begin -->
+> **Runtime profile: `compatible`.** Strict `canonical-l0` is proved and modelled, not the deployed route yet.
+> **Claim:** policy-covered request-effects recognised by the compatible MCP boundary require a matching live human approval and an allowing Lean kernel verdict; seam failures block; every decision emits replayable evidence.
+> **Non-claim:** the deployed host is not proved end to end, and canonical parser rejection is not currently the runtime gate. Host `ApprovalRecord` tokens are a separate signed channel from the v2 canonical approval tuple.
+<!-- truthbox:end -->
+> Map: [EVALUATOR-START.md](https://github.com/velvetmonkey/seal/blob/main/EVALUATOR-START.md) · profile detail: [PROFILE.md](https://github.com/velvetmonkey/seal-host/blob/main/PROFILE.md) — both in private repos; the links resolve only for authorised evaluators.
 
 <!-- TODO(asset, shot #4): real screenshot — the verdict row + decision-receipt panel
      (Allow/Block + the JSON receipt) from the live page. It IS the product; capture it,
