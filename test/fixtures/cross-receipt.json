@@ -11,6 +11,7 @@
   "canonical_request_sha256": "c423e524f58c6bfff5e750dabd761795af1afc08ba895dd2322729f424f941ca",
   "bypass": false,
   "verdict": "ALLOW",
+  "authorization": "approval",
   "reason": "every gating kernel allows",
   "deny_kernel": null,
   "approval": {

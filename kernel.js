@@ -146,6 +146,9 @@ export async function decideSeqRaw(config, steps, tool) {
 // args_hash and approval.policy_hash are derived inside the seam.
 export function buildReceipt({ call, config, parsed, raw, sha }) {
   const verdict = parsed.verdict === "DENY" ? "BLOCK" : parsed.verdict; // ALLOW | BLOCK | ERROR
+  const authorization = verdict === "ALLOW"
+    ? ((call.approvals || []).length ? "approval" : "explicit_policy_allow")
+    : undefined;
   return assembleReceiptV2({
     tool: call.tool,
     arguments: call.args,
@@ -154,7 +157,8 @@ export function buildReceipt({ call, config, parsed, raw, sha }) {
     canonical_request_sha256: canonicalRequestSha256(call.tool, call.args),
     bypass: false,
     verdict,
-    approval: verdict === "ALLOW"
+    authorization,
+    approval: authorization === "approval"
       ? { approval_identity: { channel: "interactive" } } // policy_hash derived in the seam
       : undefined,
     reason: parsed.reason,

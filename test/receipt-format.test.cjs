@@ -55,7 +55,7 @@ function check(name, got, want) {
     seal_receipt: "v1", tool: "db.execute", arguments: v1args,
     canonical_request: F.canonicalRequest("db.execute", v1args),
     canonical_request_sha256: F.canonicalRequestSha256("db.execute", v1args),
-    bypass: false, verdict: "ALLOW", reason: "every gating kernel allows", deny_kernel: null,
+    bypass: false, verdict: "ALLOW", authorization: "approval", reason: "every gating kernel allows", deny_kernel: null,
     certs: [], emitted_bytes: "{}",
     kernel_identity: { wasm_sha256: "ebd17c14668176612c49f6e2940b23df82a2c1a7cdef6759f0d6276ae997e9d0", self_verified: true },
     kernel_config: { epoch: 1 },
@@ -143,7 +143,8 @@ function check(name, got, want) {
     tool: "payments.send", arguments: payArgs, now: 1000,
     canonical_request: F.canonicalRequest("payments.send", payArgs),
     canonical_request_sha256: F.canonicalRequestSha256("payments.send", payArgs),
-    bypass: false, verdict: "ALLOW", reason: "every gating kernel allows", deny_kernel: null,
+    bypass: false, verdict: "ALLOW", authorization: "approval",
+    reason: "every gating kernel allows", deny_kernel: null,
     amount: 40000, merchant: "supplier-77", currency: "GBP",
     approval: {
       approval_identity: { channel: "ed25519", key_id: "ab12cd34" },
@@ -164,7 +165,7 @@ function check(name, got, want) {
   check("assembleReceiptV2 top-level key order",
     JSON.stringify(Object.keys(v2r)),
     JSON.stringify(["seal_receipt", "tool", "arguments", "args_hash", "now", "canonical_request",
-      "canonical_request_sha256", "bypass", "verdict", "reason", "deny_kernel", "amount",
+      "canonical_request_sha256", "bypass", "verdict", "authorization", "reason", "deny_kernel", "amount",
       "merchant", "currency", "approval", "certs", "emitted_bytes", "kernel_identity",
       "kernel_config", "granted_capabilities"]));
 
@@ -217,6 +218,25 @@ function check(name, got, want) {
   delete allowNoApproval.approval;
   r = F.validateReceipt(allowNoApproval);
   check("v2 rejects mediated ALLOW without approval block", r.ok, false);
+  const explicitAllow = { ...allowNoApproval, authorization: "explicit_policy_allow", granted_capabilities: [] };
+  r = F.validateReceipt(explicitAllow);
+  check("v2 accepts explicit policy ALLOW without approval", r.ok, true);
+  r = F.validateReceipt({ ...explicitAllow, approval: { approval_identity: { channel: "interactive" } } });
+  check("v2 rejects approval block on explicit policy ALLOW", r.ok, false);
+
+  // --- host_identity (Gate 0A receipt parity): native-exe + Lean-FFI hashes 64-hex,
+  // equivalence pinned to "not_proven" so the host never overclaims Rust == Lean.
+  const hostOk = { ...v2r, host_identity: {
+    native_executable_sha256: "a".repeat(64), lean_ffi_sha256: "b".repeat(64), equivalence: "not_proven" } };
+  r = F.validateReceipt(hostOk);
+  check("v2 accepts well-formed host_identity", r.ok, true);
+  r = F.validateReceipt({ ...v2r, host_identity: {
+    native_executable_sha256: "nothex", lean_ffi_sha256: "b".repeat(64), equivalence: "not_proven" } });
+  check("v2 rejects host_identity non-hex hash", r.ok, false);
+  r = F.validateReceipt({ ...hostOk, host_identity: { ...hostOk.host_identity, equivalence: "proven" } });
+  check("v2 rejects host_identity equivalence != not_proven", r.ok, false);
+  r = F.validateReceipt({ ...v2r, host_identity: "not-an-object" });
+  check("v2 rejects non-object host_identity", r.ok, false);
   const fileOk = F.assembleReceiptV2({
     ...v2fields,
     tool: "store.update", arguments: { op: "orset.add", key: "k1" },
