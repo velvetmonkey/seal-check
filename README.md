@@ -18,7 +18,7 @@ The page bundles the audited wasm, re-runs the kernel over the exact bytes, and 
 
 ## Two honest paths
 
-**Luxury 1-minute showcase — two honest paths**
+**1-minute showcase — two honest paths**
 
 *Terminal (same wasm, no browser):* `node test/verify-file.cjs <receipt> --expected-config-pubkey <independently-provisioned-public-key>` exits 0 only when signature, replay, bindings, and the relying-party pin all agree. Unpinned consistency exits 3; verification failure exits 1. The browser and terminal load the identical `wasm/seal.js`.
 
