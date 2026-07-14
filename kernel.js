@@ -24,14 +24,32 @@ export const LEAN_TOOLCHAIN = "leanprover/lean4:v4.28.0";
 export const KERNEL_AXIOMS = ["propext", "Classical.choice", "Quot.sound"];
 
 // --- module singleton (one wasm instance for the whole page) ----------------
-let _mod = null;
-async function mod() {
-  if (_mod) return _mod;
-  if (!window.SealModule) {
-    throw new Error('wasm/seal.js not loaded (need <script src="wasm/seal.js"> before this module)');
+// Fetch the compiled kernel bytes exactly once and share them: emscripten
+// instantiates from these bytes (via Module.wasmBinary, no second network round)
+// and verifyKernelSha re-hashes the SAME bytes. Both memoise the PROMISE, not the
+// resolved value: at load, ready() and an in-flight decide call mod() concurrently,
+// and a resolved-value guard (`if (_mod)`) lets both race past before either sets it,
+// instantiating the kernel and fetching the wasm twice. The promise cache is atomic.
+let _modPromise = null;
+let _kernelBytesPromise = null;
+export function kernelBytes() {
+  if (!_kernelBytesPromise) {
+    _kernelBytesPromise = (async () =>
+      new Uint8Array(await (await fetch(WASM_URL)).arrayBuffer()))();
   }
-  _mod = await window.SealModule({ print: () => {}, printErr: () => {} });
-  return _mod;
+  return _kernelBytesPromise;
+}
+function mod() {
+  if (!_modPromise) {
+    _modPromise = (async () => {
+      if (!window.SealModule) {
+        throw new Error('wasm/seal.js not loaded (need <script src="wasm/seal.js"> before this module)');
+      }
+      // Pass a copy so emscripten can never detach the buffer verifyKernelSha hashes.
+      return window.SealModule({ wasmBinary: (await kernelBytes()).slice(), print: () => {}, printErr: () => {} });
+    })();
+  }
+  return _modPromise;
 }
 export async function ready() { await mod(); return true; }
 
@@ -87,14 +105,14 @@ export function sha256Hex(bytes) {
 let _shaCache = null;
 export async function verifyKernelSha() {
   if (_shaCache) return _shaCache;
-  const buf = await (await fetch(WASM_URL)).arrayBuffer();
+  const bytes = await kernelBytes(); // shared single fetch (also used to instantiate)
   let computed, method;
   if (crypto && crypto.subtle) {
-    const digest = await crypto.subtle.digest("SHA-256", buf);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
     computed = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
     method = "SubtleCrypto";
   } else {
-    computed = sha256Hex(new Uint8Array(buf)); // non-secure origin (e.g. http://hostname)
+    computed = sha256Hex(bytes); // non-secure origin (e.g. http://hostname)
     method = "js-fallback";
   }
   // method is intentionally NOT part of the receipt — the hash is identical either way.
