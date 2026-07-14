@@ -7,27 +7,29 @@
 // verified verdict the demo narrates. Cert hashes are emitted by the kernel, not
 // encoded here.
 import { stableHashParts } from "./receipt-format.js";
+import nacl from "./vendor/nacl.js";
 
 // Fixed TEST-ONLY Ed25519 key from RFC 8032 test vector 1. The private seed is
 // intentionally public: this key is only the deterministic trust root for the
 // in-browser demo and its byte-stable fixtures, never an operator credential.
 // Production receipts carry their operator's independently managed public key.
 export const PUBKEY = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
-const TEST_PRIVATE_KEY_PKCS8_HEX =
-  "302e020100300506032b657004220420" +
-  "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+const TEST_SEED_HEX = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
 
 const hexBytes = (hex) => Uint8Array.from(hex.match(/../g), (byte) => parseInt(byte, 16));
 const bytesHex = (bytes) => [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-let _testSigningKey = null;
 
-async function testSigningKey() {
-  if (_testSigningKey) return _testSigningKey;
-  if (!globalThis.crypto?.subtle) throw new Error("Ed25519 signing requires WebCrypto SubtleCrypto");
-  _testSigningKey = globalThis.crypto.subtle.importKey(
-    "pkcs8", hexBytes(TEST_PRIVATE_KEY_PKCS8_HEX), { name: "Ed25519" }, false, ["sign"]);
-  return _testSigningKey;
-}
+// TweetNaCl secret key = seed(32) || public(32). Signing is pure JS and needs no
+// WebCrypto, so the in-browser demo renders in every browser and any context
+// (including plain http on a LAN/tailnet IP, where crypto.subtle is undefined).
+// Ed25519 is deterministic (RFC 8032), so these bytes are identical to the ones
+// WebCrypto produced for the same key (verified 2026-07-14); df42 accepts them.
+const _secretKey = (() => {
+  const sk = new Uint8Array(64);
+  sk.set(hexBytes(TEST_SEED_HEX), 0);
+  sk.set(hexBytes(PUBKEY), 32);
+  return sk;
+})();
 
 // SHA-256 target commitment, exact mirror of Lean Seal.stableHashParts.
 export function stableHash(parts) {
@@ -36,11 +38,11 @@ export function stableHash(parts) {
 
 // Real Ed25519 over the EXACT compact payload string accepted by df42 seal_init.
 // Return every value from the same signing operation so later receipt emission
-// never needs to reconstruct (and potentially drift) the signed bytes.
+// never needs to reconstruct (and potentially drift) the signed bytes. Kept async
+// so existing callers are unchanged; the body is synchronous (nacl signs in-process).
 export async function buildSignedConfig(config) {
   const payload = JSON.stringify(config);
-  const signature = bytesHex(new Uint8Array(await globalThis.crypto.subtle.sign(
-    "Ed25519", await testSigningKey(), new TextEncoder().encode(payload))));
+  const signature = bytesHex(nacl.sign.detached(new TextEncoder().encode(payload), _secretKey));
   return {
     payload, signature, pubkey: PUBKEY,
     envelope: JSON.stringify({ payload, signature }),
