@@ -239,12 +239,24 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
     ut.formatOk === false || (ut.kernelMaterialConsistent === false && ut.outcome === "failure"));
   const uFab = await R.verifyReceipt({ ...cloneUnp(), tool: "db.execute" });
   check("unparseable + fabricated tool rejected at shape", uFab.formatOk === false);
+  check("unparseable: kernel-attested request binding holds on the real receipt",
+    u.kernelRequestBinding === true);
+  // RED — the security property of the kernel request commitment. Before the
+  // kernel committed to the judged bytes, this forgery VERIFIED: nothing tied
+  // request_sha256 to the kernel material.
+  const uForged = cloneUnp();
+  uForged.request_sha256 =
+    uForged.request_sha256.slice(0, -1) + (uForged.request_sha256.endsWith("0") ? "1" : "0");
+  const uf = await R.verifyReceipt(uForged, { expectedConfigPubkey: cfg.PUBKEY });
+  check("unparseable: forged request_sha256 pairing fails closed",
+    uf.formatOk === false || (uf.kernelRequestBinding === false && uf.outcome === "failure"),
+    uf.outcome);
 
   // CLI: distinct state maps to exit 0 with the reduced-scope banner.
   const unpPath = path.join(__dirname, "fixtures", "unparseable-block.receipt.json");
   let cliUnp = cli(unpPath, "--expected-config-pubkey", cfg.PUBKEY);
-  check("verify-file CLI: unparseable + pin exits 0 with raw-line-identity banner",
-    cliUnp.status === 0 && cliUnp.stdout.includes("AUTHORISED (raw-line identity only)"),
+  check("verify-file CLI: unparseable + pin exits 0 with kernel-attested-binding banner",
+    cliUnp.status === 0 && cliUnp.stdout.includes("AUTHORISED (kernel-attested request binding)"),
     `status ${cliUnp.status}: ${cliUnp.stdout}${cliUnp.stderr}`);
   cliUnp = cli(unpPath);
   check("verify-file CLI: unparseable without pin exits 3/UNPINNED", cliUnp.status === 3);

@@ -35,8 +35,7 @@ async function verifyConfigSignature(sc) {
 
 // The kernel material an unparseable-request receipt carries must at least
 // agree with itself: the audit embedded in emitted_bytes names the same
-// verdict and certs the receipt asserts. Consistency, not replay — the
-// emitted bytes do not commit to the raw line.
+// verdict and certs the receipt asserts. Consistency, not replay.
 function auditConsistent(receipt) {
   try {
     const audit = JSON.parse(JSON.parse(receipt.emitted_bytes).audit);
@@ -44,6 +43,19 @@ function auditConsistent(receipt) {
       JSON.stringify(audit.certs) === JSON.stringify(receipt.certs);
   } catch {
     return false;
+  }
+}
+
+// The kernel's own commitment to the bytes it judged: Host/Audit.lean puts
+// sha256 of the exact judged line into the audit inside emitted_bytes. This
+// is what makes the pairing of kernel material to request identity
+// kernel-attested rather than host-asserted.
+function auditRequestHash(emittedBytes) {
+  try {
+    const h = JSON.parse(JSON.parse(emittedBytes).audit).request_sha256;
+    return typeof h === "string" && /^[0-9a-f]{64}$/.test(h) ? h : null;
+  } catch {
+    return null;
   }
 }
 
@@ -158,7 +170,7 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
     out.requestLine = null;
     out.requestHashMatch = null;
     out.rawLineIdentity = receipt.request_sha256;
-    out.requestIdentityNote = "no canonical re-derivation possible; raw line identity only (request_sha256)";
+    out.requestIdentityNote = "no canonical re-derivation possible; request identity is the raw line hash (request_sha256), kernel-attested via the audit's own commitment";
   } else {
     out.requestHash = canonicalRequestSha256(receipt.tool, receipt.arguments);
     out.requestLine = canonicalRequest(receipt.tool, receipt.arguments);
@@ -195,12 +207,14 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
   // 5. Resolve grants from the authenticated policy, then replay its exact
   //    envelope through df42. The verifier never invokes the test signer.
   //    An unparseable-request receipt cannot be replayed (no tool/arguments):
-  //    instead, verify the Ed25519 config signature directly and check the
+  //    instead, verify the Ed25519 config signature directly, check the
   //    kernel material the receipt DOES carry (emitted_bytes audit verdict +
-  //    certs) for internal consistency. Note the honest residual: the kernel's
-  //    emitted bytes do not commit to the raw line, so binding the kernel
-  //    material to request_sha256 rests on the producing host, not on
-  //    re-derivation here.
+  //    certs) for internal consistency, and check the KERNEL-ATTESTED request
+  //    binding: the audit's request_sha256 (the kernel's own hash of the
+  //    judged bytes) must equal the receipt's request_sha256. The pairing is
+  //    kernel-attested now, no longer host-asserted. Honest residual that
+  //    remains: without replay, the authenticity of the kernel blob itself
+  //    still rests on the producing host's transcript.
   out.rederived = null; out.verdictMatch = null;
   const grants = capabilityTargetsFromPolicy(signedPayload, receipt.granted_capabilities);
   out.opaqueGrants = grants.opaque;   // grants whose pre-image the producer did not hold
@@ -212,6 +226,8 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
       out.config_freshness = out.signature_valid ? freshnessCandidate : null;
     }
     out.kernelMaterialConsistent = auditConsistent(receipt);
+    const kernelHash = auditRequestHash(receipt.emitted_bytes);
+    out.kernelRequestBinding = kernelHash !== null && kernelHash === receipt.request_sha256;
   } else if (out.bindingOk && grants.errors.length === 0) {
     try {
       const res = await decideSignedRaw(signedConfig, {
@@ -226,8 +242,31 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
         out.rederived = res.parsed.verdict === "DENY" ? "BLOCK" : res.parsed.verdict;
         out.rederivedReason = res.parsed.reason;
         out.verdictMatch = out.rederived === receipt.verdict;
-        out.emittedBytesMatch = typeof receipt.emitted_bytes === "string"
-          ? res.raw === receipt.emitted_bytes : null;
+        // Kernel-attested request binding, parseable side. A native-host
+        // receipt carries the hash of the ACTUAL wire line (request_sha256);
+        // browser/kit-minted receipts carry no top-level request_sha256 and
+        // the judged line IS the canonical line.
+        const expectedHash = typeof receipt.request_sha256 === "string"
+          ? receipt.request_sha256 : out.requestHash;
+        const storedKernelHash = typeof receipt.emitted_bytes === "string"
+          ? auditRequestHash(receipt.emitted_bytes) : null;
+        out.kernelRequestBinding = storedKernelHash !== null && storedKernelHash === expectedHash;
+        // Replay reconstructs the CANONICAL id=1 line, so the replayed
+        // audit's request commitment legitimately differs whenever the
+        // actual wire line differed. Compare byte-identical MODULO that one
+        // kernel-derived token (pinned independently just above); the token
+        // must occur exactly once for the substitution to be byte-safe.
+        // Strictly stronger than plain equality, which this degenerates to
+        // when the hashes agree.
+        if (typeof receipt.emitted_bytes === "string") {
+          const replayedHash = auditRequestHash(res.raw);
+          const substitutable = replayedHash !== null && storedKernelHash !== null &&
+            res.raw.split(replayedHash).length === 2;
+          out.emittedBytesMatch = substitutable &&
+            res.raw.replace(replayedHash, storedKernelHash) === receipt.emitted_bytes;
+        } else {
+          out.emittedBytesMatch = null;
+        }
         out.kernel_replay_consistent = out.verdictMatch === true && out.emittedBytesMatch === true;
       }
     } catch (e) { out.rederiveError = e.message; }
@@ -238,10 +277,11 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
   // request re-derivation, kernel replay) is excluded rather than failed.
   const verificationCore = out.unparseableRequest
     ? out.formatOk && out.kernelShaMatch && out.bindingOk &&
-      out.grantErrors.length === 0 && out.signature_valid && out.kernelMaterialConsistent === true
+      out.grantErrors.length === 0 && out.signature_valid &&
+      out.kernelMaterialConsistent === true && out.kernelRequestBinding === true
     : out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
       out.bindingOk && out.grantErrors.length === 0 && out.signature_valid &&
-      out.kernel_replay_consistent;
+      out.kernel_replay_consistent && out.kernelRequestBinding === true;
   out.verificationCore = verificationCore;
   out.outcome = !verificationCore || out.authority_trusted === false
     ? "failure"

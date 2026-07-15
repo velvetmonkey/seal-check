@@ -9,7 +9,8 @@ const USAGE = `usage: node test/verify-file.cjs <receipt.json> [--expected-confi
 
 exit codes:
   0  AUTHORISED (signature + replay valid; supplied operator pin matches) —
-     for an unparseable-request receipt (§11.1), raw-line identity scope
+     for an unparseable-request receipt (§11.1), kernel-attested request
+     binding scope (audit sha256 of the judged bytes = request_sha256)
   1  verification, binding, replay, or signer failure
   2  usage/CLI error
   3  authentic + replay-consistent but UNPINNED`;
@@ -68,7 +69,8 @@ globalThis.fetch = async (p) => {
     process.exit(0);
   }
   if (result.outcome === "authorised-unparseable") {
-    console.log(`AUTHORISED (raw-line identity only): signed by pinned operator key; ` +
+    console.log(`AUTHORISED (kernel-attested request binding): signed by pinned operator key; ` +
+      `the kernel's audit commits to sha256 of the exact bytes it judged and it matches request_sha256; ` +
       `wire line not re-parseable (${receipt.request_parse_error}); no canonical replay possible ${receiptPath}`);
     process.exit(0);
   }
