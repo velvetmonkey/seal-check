@@ -268,6 +268,34 @@ function check(name, got, want) {
   r = F.validateReceipt(v1ok);
   check("v1 still validates (accepted-legacy)", JSON.stringify([r.ok, r.version]), JSON.stringify([true, "v1"]));
 
+  // --- §11.1/§11.5 unparseable-request rule: assembly ------------------------
+  // seal-host (main @ 3a74dbf) emits request_sha256 on every native receipt and
+  // request_parse_error when serde could not re-parse the wire line the kernel
+  // judged; on those lines the structured request fields are absent and
+  // request_sha256 is the ONLY request identity. The assembler must not drop it.
+  const unpAsm = F.assembleReceiptV2({
+    now: 1000,
+    request_sha256: "c".repeat(64),
+    request_parse_error: "cannot parse mediated request for receipt: number out of range at line 1 column 145",
+    bypass: false, verdict: "BLOCK", reason: "safety kernel: cert", deny_kernel: "safety",
+    certs: [], emitted_bytes: "{}",
+    kernel_identity: { wasm_sha256: "0".repeat(64), self_verified: true },
+    signed_config: signedConfig(PAYCFG), kernel_config: PAYCFG, granted_capabilities: [],
+  });
+  check("assembleReceiptV2 preserves request_sha256 + request_parse_error (§11.5)",
+    JSON.stringify(Object.keys(unpAsm)),
+    JSON.stringify(["seal_receipt", "now", "request_sha256", "request_parse_error", "bypass",
+      "verdict", "reason", "deny_kernel", "certs", "emitted_bytes", "kernel_identity",
+      "signed_config", "kernel_config", "granted_capabilities"]));
+  check("unparseable-request roundtrip byte-identical",
+    JSON.stringify(F.assembleReceiptV2(JSON.parse(JSON.stringify(unpAsm)))), JSON.stringify(unpAsm));
+  const withBoth = F.assembleReceiptV2({ ...v2fields, request_sha256: "c".repeat(64) });
+  check("request_sha256 sits between canonical_request_sha256 and bypass (§11.5 order)",
+    JSON.stringify(Object.keys(withBoth).slice(
+      Object.keys(withBoth).indexOf("canonical_request_sha256"),
+      Object.keys(withBoth).indexOf("bypass") + 1)),
+    JSON.stringify(["canonical_request_sha256", "request_sha256", "bypass"]));
+
   console.log(failures === 0 ? "\nALL VECTORS PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error("ERR", e); process.exit(1); });

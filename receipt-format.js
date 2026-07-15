@@ -179,7 +179,8 @@ export function assembleReceiptV1(fields) {
 // producers cannot skew them), unless the receipt is a bypass.
 const V2_KEY_ORDER = [
   "seal_receipt", "tool", "action", "arguments", "args_hash", "now",
-  "canonical_request", "canonical_request_sha256", "bypass", "verdict",
+  "canonical_request", "canonical_request_sha256", "request_sha256", "request_parse_error",
+  "bypass", "verdict",
   "authorization", "reason", "deny_kernel", "amount", "merchant", "currency", "approval",
   "certs", "emitted_bytes", "kernel_identity", "host_identity", "asserted_provenance",
   "signed_config", "kernel_config", "granted_capabilities", "policy_id", "signature",
