@@ -4,6 +4,10 @@
 
 **Paste a receipt. A tampered one fails in your browser — the real kernel verifies its signed config and re-derives the verdict live. No server, no account, no faith required.**
 
+![A tampered receipt refused by seal-check: signature and request-byte checks pass, but the on-device re-run derives ALLOW against the receipt's flipped verdict, so kernel_replay_consistent is false and the receipt is REFUSED.](docs/img/tampered-receipt-refused.png)
+
+<sub>The shipped tamper example, refused. The signature is valid and the request bytes match — those checks pass. What fails is the re-run: the kernel re-derives `ALLOW` from the receipt's own call and config, the receipt claims `BLOCK`, so `kernel_replay_consistent: false`. Note `authority_trusted: UNPINNED` in the same panel: the browser path verifies the decision, never operator authority. Reproduce with `python3 -m http.server 8000` and the "Verify a TAMPERED receipt" button.</sub>
+
 Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the proven decision procedure over the exact bytes. Genuine receipts can be authentic and replay-consistent; operator authority additionally requires an independently provisioned public-key pin.
 
 One command serves the page. Click the tamper example and watch it fail. That's the product.
