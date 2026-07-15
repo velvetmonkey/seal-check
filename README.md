@@ -1,5 +1,7 @@
 # seal-check
 
+[![CI](https://github.com/velvetmonkey/seal-check/actions/workflows/ci.yml/badge.svg)](https://github.com/velvetmonkey/seal-check/actions/workflows/ci.yml)
+
 **Paste a receipt. A tampered one fails in your browser — the real kernel verifies its signed config and re-derives the verdict live. No server, no account, no faith required.**
 
 Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the proven decision procedure over the exact bytes. Genuine receipts can be authentic and replay-consistent; operator authority additionally requires an independently provisioned public-key pin.
