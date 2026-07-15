@@ -179,7 +179,8 @@ export function assembleReceiptV1(fields) {
 // producers cannot skew them), unless the receipt is a bypass.
 const V2_KEY_ORDER = [
   "seal_receipt", "tool", "action", "arguments", "args_hash", "now",
-  "canonical_request", "canonical_request_sha256", "bypass", "verdict",
+  "canonical_request", "canonical_request_sha256", "request_sha256", "request_parse_error",
+  "bypass", "verdict",
   "authorization", "reason", "deny_kernel", "amount", "merchant", "currency", "approval",
   "certs", "emitted_bytes", "kernel_identity", "host_identity", "asserted_provenance",
   "signed_config", "kernel_config", "granted_capabilities", "policy_id", "signature",
@@ -242,10 +243,31 @@ export function validateReceipt(r) {
     return { ok: false, version: null, errors: ["no recognized version discriminator"] };
   }
 
-  if (typeof r.tool !== "string" || !r.tool) errors.push("tool: non-empty string required");
-  if (!isObj(r.arguments)) errors.push("arguments: object required");
-  if (typeof r.canonical_request_sha256 !== "string" || !HEX64.test(r.canonical_request_sha256))
-    errors.push("canonical_request_sha256: 64-hex string required");
+  // §11.1 unparseable-request rule (seal-host main @ 3a74dbf): the kernel is
+  // deliberately the more tolerant parser. On a line the producer could not
+  // re-parse, the receipt carries request_parse_error + request_sha256 and
+  // OMITS the structured request fields; requiring them here would restore to
+  // the verifier the veto the producer was deliberately stripped of (§11.2).
+  const unparseable = "request_parse_error" in r;
+  if (unparseable) {
+    if (typeof r.request_parse_error !== "string" || !r.request_parse_error)
+      errors.push("request_parse_error: non-empty string when present");
+    if (r.bypass === true)
+      errors.push("request_parse_error: only a mediated receipt names a parse error");
+    if (typeof r.request_sha256 !== "string" || !HEX64.test(r.request_sha256))
+      errors.push("request_sha256: 64-hex string required on an unparseable-request receipt");
+    for (const k of ["tool", "arguments", "args_hash", "canonical_request", "canonical_request_sha256"]) {
+      if (k in r)
+        errors.push(`${k}: must be absent on an unparseable-request receipt (a named parse error with structured request fields is fabrication)`);
+    }
+  } else {
+    if (typeof r.tool !== "string" || !r.tool) errors.push("tool: non-empty string required");
+    if (!isObj(r.arguments)) errors.push("arguments: object required");
+    if (typeof r.canonical_request_sha256 !== "string" || !HEX64.test(r.canonical_request_sha256))
+      errors.push("canonical_request_sha256: 64-hex string required");
+    if ("request_sha256" in r && (typeof r.request_sha256 !== "string" || !HEX64.test(r.request_sha256)))
+      errors.push("request_sha256: 64-hex string when present");
+  }
   if (typeof r.bypass !== "boolean") errors.push("bypass: boolean required");
   if (!VERDICTS.includes(r.verdict)) errors.push(`verdict: one of ${VERDICTS.join("|")} required`);
   if (typeof r.reason !== "string") errors.push("reason: string required");
@@ -315,10 +337,14 @@ function validateV2Extras(r, errors) {
     errors.push("action: non-empty string when present");
 
   if (r.bypass === false) {
-    if (typeof r.args_hash !== "string" || !HEX64.test(r.args_hash))
-      errors.push("args_hash: 64-hex string required when mediated (v2)");
-    else if (isObj(r.arguments) && r.args_hash !== canonicalJsonSha256(r.arguments))
-      errors.push("args_hash: does not equal sha256 of the canonical arguments serialization");
+    // §11.2: args_hash is required iff the producer parsed the wire line; on
+    // an unparseable-request receipt its absence is enforced in validateReceipt.
+    if (!("request_parse_error" in r)) {
+      if (typeof r.args_hash !== "string" || !HEX64.test(r.args_hash))
+        errors.push("args_hash: 64-hex string required when mediated (v2)");
+      else if (isObj(r.arguments) && r.args_hash !== canonicalJsonSha256(r.arguments))
+        errors.push("args_hash: does not equal sha256 of the canonical arguments serialization");
+    }
   } else if ("args_hash" in r) {
     errors.push("args_hash: must be absent on bypass");
   }

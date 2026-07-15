@@ -207,6 +207,48 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
     cliRun.status === 2 && cliRun.stderr.includes("usage:"));
   fs.rmSync(cliDir, { recursive: true, force: true });
 
+  // --- §11.1 unparseable-request receipt: REAL seal-host receipt -------------
+  // Produced by seal-host main @ 3a74dbf on the pinned 1e309 line
+  // (test/host_path.rs:722 form): serde cannot re-parse it, the Lean kernel
+  // mediates it. The verifier must report a DISTINCT reduced-scope state —
+  // never requestHashMatch:true (the undefined === undefined false PASS this
+  // test exists to prevent), and never a bare AUTHORISED.
+  const unp = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "fixtures", "unparseable-block.receipt.json"), "utf8"));
+  const cloneUnp = () => JSON.parse(JSON.stringify(unp));
+  check("unparseable: callSummary names the raw-line state (never 'undefined')",
+    R.callSummary(unp).unparseable === true && typeof R.callSummary(unp).rawLineShort === "string");
+  const u = await R.verifyReceipt(cloneUnp(), { expectedConfigPubkey: cfg.PUBKEY });
+  check("unparseable: format ok", u.formatOk === true, (u.formatErrors || []).join("; "));
+  check("unparseable: requestHashMatch is null — its own state, NOT a false match",
+    u.requestHashMatch === null);
+  check("unparseable: raw line identity carried", u.rawLineIdentity === unp.request_sha256);
+  check("unparseable: replay honestly unavailable", typeof u.replayUnavailable === "string");
+  check("unparseable: kernel_replay_consistent stays false", u.kernel_replay_consistent === false);
+  check("unparseable: config signature verified directly (Ed25519)", u.signature_valid === true);
+  check("unparseable: kernel material self-consistent (audit verdict + certs)",
+    u.kernelMaterialConsistent === true);
+  check("unparseable: outcome authorised-unparseable, never bare authorised",
+    u.outcome === "authorised-unparseable" && u.allGood === false, u.outcome);
+  const uUnpinned = await R.verifyReceipt(cloneUnp());
+  check("unparseable: without pin stays unpinned", uUnpinned.outcome === "unpinned");
+  const uTampered = cloneUnp();
+  uTampered.verdict = "ALLOW"; // audit says deny — material no longer self-consistent
+  const ut = await R.verifyReceipt(uTampered, { expectedConfigPubkey: cfg.PUBKEY });
+  check("unparseable: tampered verdict fails kernel-material consistency",
+    ut.formatOk === false || (ut.kernelMaterialConsistent === false && ut.outcome === "failure"));
+  const uFab = await R.verifyReceipt({ ...cloneUnp(), tool: "db.execute" });
+  check("unparseable + fabricated tool rejected at shape", uFab.formatOk === false);
+
+  // CLI: distinct state maps to exit 0 with the reduced-scope banner.
+  const unpPath = path.join(__dirname, "fixtures", "unparseable-block.receipt.json");
+  let cliUnp = cli(unpPath, "--expected-config-pubkey", cfg.PUBKEY);
+  check("verify-file CLI: unparseable + pin exits 0 with raw-line-identity banner",
+    cliUnp.status === 0 && cliUnp.stdout.includes("AUTHORISED (raw-line identity only)"),
+    `status ${cliUnp.status}: ${cliUnp.stdout}${cliUnp.stderr}`);
+  cliUnp = cli(unpPath);
+  check("verify-file CLI: unparseable without pin exits 3/UNPINNED", cliUnp.status === 3);
+
   console.log(failures === 0 ? "\nRECEIPT-VERIFY (negative paths) PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error("ERR", e); process.exit(1); });

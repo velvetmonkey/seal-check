@@ -365,6 +365,10 @@ function showReceiptError(msg, focus = true) {
 // operation-on-table phrasing, everything else falls back to tool+arguments.
 function callSummaryHtml(receipt) {
   const s = callSummary(receipt);
+  if (s.unparseable) {
+    return `make a call whose wire line could not be re-parsed by the receipt layer ` +
+      `(§11.1; raw line sha256 <code>${escapeHtml(s.rawLineShort)}</code>)`;
+  }
   return s.demo
     ? `run <code>${escapeHtml(s.operation)}</code> on <code>${escapeHtml(s.table)}</code>`
     : `call <code>${escapeHtml(s.tool)}</code> with arguments <code>${escapeHtml(s.argsJson)}</code>`;
@@ -411,14 +415,24 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
 
   const ul = $("rv-checks"); ul.textContent = "";
   ul.append(rvLine(r.kernelShaMatch, `kernel binary self-verified (sha256 ${r.kernelSha.slice(0, 12)}…, matches the receipt)`));
-  ul.append(rvLine(r.requestHashMatch, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…)`));
+  if (r.unparseableRequest) {
+    // §11.1: not a match, not a mismatch — its own state, named calmly.
+    ul.append(rvLine(null, `request identity is the raw wire line only (request_sha256 ${(receipt.request_sha256 || "").slice(0, 12)}…) — the line could not be re-parsed (${receipt.request_parse_error}), so no canonical re-derivation is possible`));
+  } else {
+    ul.append(rvLine(r.requestHashMatch, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…)`));
+  }
   ul.append(rvLine(r.bindingOk, r.bindingOk
     ? "signed config bytes bind exactly to the displayed kernel_config"
     : `signed config binding failed: ${(r.bindingErrors || []).join("; ")}`));
   ul.append(rvLine(r.signature_valid, r.signature_valid
     ? `signature_valid: signed by holder of ${receipt.signed_config.pubkey.slice(0, 12)}…`
     : "signature_valid: false"));
-  if (r.verdictMatch === null) {
+  if (r.unparseableRequest) {
+    ul.append(rvLine(null, "verdict not re-derivable: an unparseable-request receipt carries no (tool, arguments) to replay"));
+    ul.append(rvLine(r.kernelMaterialConsistent, r.kernelMaterialConsistent
+      ? "kernel material self-consistent: emitted_bytes audit names the receipt's own verdict and certs (consistency, not replay)"
+      : "kernel material inconsistent: emitted_bytes audit disagrees with the receipt's verdict or certs"));
+  } else if (r.verdictMatch === null) {
     ul.append(rvLine(null, receipt.bypass ? "verdict not re-derivable: this receipt had the gate switched OFF (the control)" : "verdict not re-derivable (receipt carries no policy)"));
   } else {
     ul.append(rvLine(r.verdictMatch, `verdict reproduced on-device: ${r.rederived === "BLOCK" ? "REFUSED" : r.rederived} (re-ran the exact request through the kernel)`));
@@ -426,7 +440,9 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
   if (r.emittedBytesMatch !== null && r.emittedBytesMatch !== undefined) {
     ul.append(rvLine(r.emittedBytesMatch, "emitted decision bytes byte-identical to the re-run"));
   }
-  ul.append(rvLine(r.kernel_replay_consistent, `kernel_replay_consistent: ${r.kernel_replay_consistent}`));
+  if (!r.unparseableRequest) {
+    ul.append(rvLine(r.kernel_replay_consistent, `kernel_replay_consistent: ${r.kernel_replay_consistent}`));
+  }
   const freshness = r.config_freshness;
   if (freshness) ul.append(rvLine(null,
     `config freshness carried: ${freshness.field}=${freshness.value}; rollback enforcement=${freshness.rollback_enforced}`));
@@ -447,6 +463,9 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
   if (r.outcome === "authorised") {
     s.textContent = "AUTHORISED: signed by pinned operator key.";
     s.className = "reason ok";
+  } else if (r.outcome === "authorised-unparseable") {
+    s.textContent = "AUTHORISED (raw-line identity only): signed by pinned operator key; the wire line could not be re-parsed, so the verdict rests on the kernel material carried, not on replay.";
+    s.className = "reason warn";
   } else if (r.outcome === "unpinned") {
     s.textContent = `AUTHENTIC + REPLAY-CONSISTENT, authority NOT established (signed by ${receipt.signed_config.pubkey}, verify it out-of-band).`;
     s.className = "reason warn";
