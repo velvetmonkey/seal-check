@@ -10,8 +10,42 @@
 // Schema K objects are rejected with the spec's regenerate error.
 import { decideSignedRaw, verifyKernelSha } from "./kernel.js";
 import {
+  HOST_AUDIT_VERDICT_MAP,
   canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, sha256Hex, validateReceipt,
 } from "./receipt-format.js";
+
+// §11.1 helpers for unparseable-request receipts -----------------------------
+
+// Ed25519 over the exact signed_config payload bytes — the same check
+// seal_init performs, done directly because the kernel cannot be invoked
+// without a parseable call.
+async function verifyConfigSignature(sc) {
+  try {
+    if (typeof sc.pubkey !== "string" || typeof sc.signature !== "string" ||
+        typeof sc.payload !== "string") return false;
+    const bytes = (hex) => Uint8Array.from(hex.match(/../g), (b) => parseInt(b, 16));
+    const key = await globalThis.crypto.subtle.importKey(
+      "raw", bytes(sc.pubkey), { name: "Ed25519" }, false, ["verify"]);
+    return await globalThis.crypto.subtle.verify(
+      "Ed25519", key, bytes(sc.signature), new TextEncoder().encode(sc.payload));
+  } catch {
+    return false;
+  }
+}
+
+// The kernel material an unparseable-request receipt carries must at least
+// agree with itself: the audit embedded in emitted_bytes names the same
+// verdict and certs the receipt asserts. Consistency, not replay — the
+// emitted bytes do not commit to the raw line.
+function auditConsistent(receipt) {
+  try {
+    const audit = JSON.parse(JSON.parse(receipt.emitted_bytes).audit);
+    return HOST_AUDIT_VERDICT_MAP[audit.verdict] === receipt.verdict &&
+      JSON.stringify(audit.certs) === JSON.stringify(receipt.certs);
+  } catch {
+    return false;
+  }
+}
 
 export function b64urlToStr(s) {
   s = s.replace(/-/g, "+").replace(/_/g, "/");
@@ -24,6 +58,13 @@ export function b64urlToStr(s) {
 // argument shape ({operation, table}); every other valid v1 receipt gets a
 // generic tool+arguments summary so real receipts never render "undefined".
 export function callSummary(receipt) {
+  // §11.1 unparseable-request receipt: the wire line the kernel judged could
+  // not be re-parsed, so there is no (tool, arguments) to summarize — only the
+  // raw line identity.
+  if (receipt && typeof receipt.request_parse_error === "string") {
+    return { demo: false, unparseable: true,
+      rawLineShort: String(receipt.request_sha256 || "").slice(0, 12) + "…" };
+  }
   const a = (receipt && typeof receipt.arguments === "object" && !Array.isArray(receipt.arguments)
     && receipt.arguments) || {};
   if (typeof a.operation === "string" && typeof a.table === "string") {
@@ -77,6 +118,16 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
   }
   out.mediated = true;
 
+  // §11.1 unparseable-request receipt: the kernel judged a wire line the
+  // producer could not re-parse. request_sha256 (SHA-256 of the raw line) is
+  // the only request commitment; canonical re-derivation and kernel replay
+  // both need the (tool, arguments) the receipt honestly does not carry.
+  // Everything else — kernel identity, signed-config binding, config
+  // signature, kernel-material consistency, authority pin — is still
+  // verified, and the outcome is its own reduced-scope state: never a bare
+  // PASS, never a fabricated mismatch.
+  out.unparseableRequest = typeof receipt.request_parse_error === "string";
+
   const signedConfig = receipt.signed_config;
   const pinSupplied = expectedConfigPubkey !== undefined;
   if (pinSupplied && (typeof expectedConfigPubkey !== "string" || !/^[0-9a-f]{64}$/.test(expectedConfigPubkey))) {
@@ -98,10 +149,21 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
 
   // 3. §2/§7: derive the canonical line from the SAME (tool, arguments) that
   //    feeds re-derivation below; validateReceipt already pinned any stored
-  //    canonical_request to this exact line.
-  out.requestHash = canonicalRequestSha256(receipt.tool, receipt.arguments);
-  out.requestLine = canonicalRequest(receipt.tool, receipt.arguments);
-  out.requestHashMatch = out.requestHash === receipt.canonical_request_sha256;
+  //    canonical_request to this exact line. On an unparseable-request receipt
+  //    no canonical re-derivation is possible: report that as its own state,
+  //    never a match (undefined === undefined is not verification) and never
+  //    a mismatch.
+  if (out.unparseableRequest) {
+    out.requestHash = null;
+    out.requestLine = null;
+    out.requestHashMatch = null;
+    out.rawLineIdentity = receipt.request_sha256;
+    out.requestIdentityNote = "no canonical re-derivation possible; raw line identity only (request_sha256)";
+  } else {
+    out.requestHash = canonicalRequestSha256(receipt.tool, receipt.arguments);
+    out.requestLine = canonicalRequest(receipt.tool, receipt.arguments);
+    out.requestHashMatch = out.requestHash === receipt.canonical_request_sha256;
+  }
 
   // 4. Bind the displayed config to the exact bytes authenticated by df42.
   //    No binding failure is allowed to reach seal_decide.
@@ -132,11 +194,25 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
 
   // 5. Resolve grants from the authenticated policy, then replay its exact
   //    envelope through df42. The verifier never invokes the test signer.
+  //    An unparseable-request receipt cannot be replayed (no tool/arguments):
+  //    instead, verify the Ed25519 config signature directly and check the
+  //    kernel material the receipt DOES carry (emitted_bytes audit verdict +
+  //    certs) for internal consistency. Note the honest residual: the kernel's
+  //    emitted bytes do not commit to the raw line, so binding the kernel
+  //    material to request_sha256 rests on the producing host, not on
+  //    re-derivation here.
   out.rederived = null; out.verdictMatch = null;
   const grants = capabilityTargetsFromPolicy(signedPayload, receipt.granted_capabilities);
   out.opaqueGrants = grants.opaque;   // grants whose pre-image the producer did not hold
   out.grantErrors = grants.errors;
-  if (out.bindingOk && grants.errors.length === 0) {
+  if (out.unparseableRequest) {
+    out.replayUnavailable = "unparseable-request receipt — no (tool, arguments) to replay";
+    if (out.bindingOk && grants.errors.length === 0 && signedConfig) {
+      out.signature_valid = await verifyConfigSignature(signedConfig);
+      out.config_freshness = out.signature_valid ? freshnessCandidate : null;
+    }
+    out.kernelMaterialConsistent = auditConsistent(receipt);
+  } else if (out.bindingOk && grants.errors.length === 0) {
     try {
       const res = await decideSignedRaw(signedConfig, {
         tool: receipt.tool, args: receipt.arguments, approvals: grants.approvals,
@@ -157,12 +233,20 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
     } catch (e) { out.rederiveError = e.message; }
   }
 
-  const verificationCore = out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
-    out.bindingOk && out.grantErrors.length === 0 && out.signature_valid &&
-    out.kernel_replay_consistent;
+  // Reduced-scope core for unparseable-request receipts: everything the
+  // receipt carries is verified; what it honestly cannot carry (canonical
+  // request re-derivation, kernel replay) is excluded rather than failed.
+  const verificationCore = out.unparseableRequest
+    ? out.formatOk && out.kernelShaMatch && out.bindingOk &&
+      out.grantErrors.length === 0 && out.signature_valid && out.kernelMaterialConsistent === true
+    : out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
+      out.bindingOk && out.grantErrors.length === 0 && out.signature_valid &&
+      out.kernel_replay_consistent;
+  out.verificationCore = verificationCore;
   out.outcome = !verificationCore || out.authority_trusted === false
     ? "failure"
-    : out.authority_trusted === true ? "authorised" : "unpinned";
+    : out.authority_trusted !== true ? "unpinned"
+    : out.unparseableRequest ? "authorised-unparseable" : "authorised";
   out.allGood = out.outcome === "authorised";
   // Informational only — gates nothing. Opaque grants are this box's defining
   // property (fire-your-own-target accepts raw commitments), not a shortfall:

@@ -8,7 +8,8 @@ const ROOT = path.resolve(__dirname, "..");
 const USAGE = `usage: node test/verify-file.cjs <receipt.json> [--expected-config-pubkey <64-hex>]
 
 exit codes:
-  0  AUTHORISED (signature + replay valid; supplied operator pin matches)
+  0  AUTHORISED (signature + replay valid; supplied operator pin matches) —
+     for an unparseable-request receipt (§11.1), raw-line identity scope
   1  verification, binding, replay, or signer failure
   2  usage/CLI error
   3  authentic + replay-consistent but UNPINNED`;
@@ -64,6 +65,11 @@ globalThis.fetch = async (p) => {
 
   if (result.outcome === "authorised") {
     console.log(`AUTHORISED: signed by pinned operator key ${receiptPath}`);
+    process.exit(0);
+  }
+  if (result.outcome === "authorised-unparseable") {
+    console.log(`AUTHORISED (raw-line identity only): signed by pinned operator key; ` +
+      `wire line not re-parseable (${receipt.request_parse_error}); no canonical replay possible ${receiptPath}`);
     process.exit(0);
   }
   if (result.outcome === "unpinned") {

@@ -1,0 +1,87 @@
+{
+  "seal_receipt": "v2",
+  "now": 1784101194532,
+  "request_sha256": "c88367514666fdf3ec74b6157deeae7ea2018bea9ce87d6e64120502df81fd30",
+  "request_parse_error": "cannot parse mediated request for receipt: number out of range at line 1 column 145",
+  "bypass": false,
+  "verdict": "BLOCK",
+  "reason": "safety kernel: f690ae2830d29772ddb0b9d880c6e24bd6f59d5450d34dc2137c42d99722b9af",
+  "deny_kernel": "safety",
+  "certs": [
+    {
+      "certHash": "7424044781177059438",
+      "kernel": "safety",
+      "reason": "f690ae2830d29772ddb0b9d880c6e24bd6f59d5450d34dc2137c42d99722b9af",
+      "verdict": "deny"
+    },
+    {
+      "certHash": "12756644985251018087",
+      "kernel": "temporal",
+      "reason": "trace ok (1 events)",
+      "verdict": "allow"
+    }
+  ],
+  "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"7424044781177059438\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"f690ae2830d29772ddb0b9d880c6e24bd6f59d5450d34dc2137c42d99722b9af\\\",\\\"verdict\\\":\\\"deny\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"tool\\\":\\\"db.execute\\\",\\\"verdict\\\":\\\"deny\\\"}\",\"response\":\"{\\\"id\\\":90,\\\"jsonrpc\\\":\\\"2.0\\\",\\\"result\\\":{\\\"content\\\":[{\\\"text\\\":\\\"approval required: f690ae2830d29772ddb0b9d880c6e24bd6f59d5450d34dc2137c42d99722b9af\\\",\\\"type\\\":\\\"text\\\"}],\\\"isError\\\":true}}\\n\",\"route\":\"block\"}",
+  "kernel_identity": {
+    "wasm_sha256": "df42cbada2297741bfeab99f222b96ac02e43a4ce8695b24922b425b8d66b1e8",
+    "self_verified": true,
+    "note": "Re-derive against this wasm; the native executor is identified separately, not proven equivalent."
+  },
+  "host_identity": {
+    "native_executable_sha256": "ad807ea3583d67919fb10f11bb2c321a9c6b526f9d2b6b23f5ad1a945780333b",
+    "lean_ffi_sha256": "9b3d17498fa164567b5533a56d8ac28bae29bc2ec3c86b6fed9c8e54a6a6932f",
+    "equivalence": "not_proven"
+  },
+  "asserted_provenance": {
+    "verified_in_browser": false,
+    "lean_toolchain": "leanprover/lean4:v4.28.0",
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "note": "Source-level provenance asserted by the producer; not established by this receipt."
+  },
+  "signed_config": {
+    "payload": "{\"epoch\":1,\"safety\":{\"approval\":{\"control_file\":\"/tmp/claude-1000/-home-monkey-src/5bc93796-a3e1-42a4-bc57-b77e47d3f753/scratchpad/receipts/work/approvals.ndjson\",\"ttl_seconds\":120},\"tools\":[{\"name\":\"db.execute\",\"mode\":\"guarded\",\"match\":{\"type\":\"contains_any_ci\",\"arg\":\"sql\",\"needles\":[\"drop\"]},\"target\":[{\"literal\":\"db\"},{\"arg\":\"database\"},{\"literal\":\"write\"},{\"arg\":\"sql\"}]}]}}",
+    "signature": "551b3f6959ddc56a06104426b2bb9de43d3ae072f89c2267fa728fec23dc65cabcefa844a579b0a0667e101ab9c4bd5dcab6e29dbdacf570186474926aed3508",
+    "pubkey": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+  },
+  "kernel_config": {
+    "epoch": 1,
+    "safety": {
+      "approval": {
+        "control_file": "/tmp/claude-1000/-home-monkey-src/5bc93796-a3e1-42a4-bc57-b77e47d3f753/scratchpad/receipts/work/approvals.ndjson",
+        "ttl_seconds": 120
+      },
+      "tools": [
+        {
+          "name": "db.execute",
+          "mode": "guarded",
+          "match": {
+            "type": "contains_any_ci",
+            "arg": "sql",
+            "needles": [
+              "drop"
+            ]
+          },
+          "target": [
+            {
+              "literal": "db"
+            },
+            {
+              "arg": "database"
+            },
+            {
+              "literal": "write"
+            },
+            {
+              "arg": "sql"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "granted_capabilities": []
+}
