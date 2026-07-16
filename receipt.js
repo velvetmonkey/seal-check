@@ -14,6 +14,17 @@ import {
   canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, sha256Hex, validateReceipt,
 } from "./receipt-format.js";
 
+// Declared verification profile of THIS copy (seal-assurance-kit
+// docs/VERIFY-PROFILES.md): P-ENFORCE — the production receipt gate.
+// signed_config binding is required, the top verdict requires the
+// trust-anchor pin (`expectedConfigPubkey`), and the outcome set
+// {authorised, authorised-unparseable, unpinned, failure} maps to the CLI's
+// 0/4/3/1 exits and the browser's four states (the browser deployment is
+// unpinned, so its ceiling is UNPINNED — ENF-4). The fleet differentials key
+// their expected agreement/divergence off this declaration; changing it is a
+// design decision, not a refactor.
+export const VERIFY_PROFILE = "P-ENFORCE";
+
 // §11.1 helpers for unparseable-request receipts -----------------------------
 
 // Ed25519 over the exact signed_config payload bytes — the same check
