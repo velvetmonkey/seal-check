@@ -8,12 +8,15 @@ const ROOT = path.resolve(__dirname, "..");
 const USAGE = `usage: node test/verify-file.cjs <receipt.json> [--expected-config-pubkey <64-hex>]
 
 exit codes:
-  0  AUTHORISED (signature + replay valid; supplied operator pin matches) —
-     for an unparseable-request receipt (§11.1), kernel-attested request
-     binding scope (audit sha256 of the judged bytes = request_sha256)
+  0  AUTHORISED (signature + replay valid; supplied operator pin matches)
   1  verification, binding, replay, or signer failure
   2  usage/CLI error
-  3  authentic + replay-consistent but UNPINNED`;
+  3  authentic + replay-consistent but UNPINNED
+  4  REDUCED SCOPE (authorised-unparseable, §11.1): everything carried verifies
+     (pinned signer, kernel-attested request binding) but the wire line is not
+     re-parseable, so no independent replay is possible — NOT independently
+     verified. A distinct non-passing state: never collapse it to AUTHORISED(0)
+     and never to a hard failure(1).`;
 
 const argv = process.argv.slice(2);
 if (argv.length === 1 && argv[0] === "--help") {
@@ -69,10 +72,16 @@ globalThis.fetch = async (p) => {
     process.exit(0);
   }
   if (result.outcome === "authorised-unparseable") {
-    console.log(`AUTHORISED (kernel-attested request binding): signed by pinned operator key; ` +
-      `the kernel's audit commits to sha256 of the exact bytes it judged and it matches request_sha256; ` +
-      `wire line not re-parseable (${receipt.request_parse_error}); no canonical replay possible ${receiptPath}`);
-    process.exit(0);
+    // §11.1 reduced scope, NOT a pass. The request binding is kernel-attested
+    // (the audit's own sha256 of the judged bytes matches request_sha256) and
+    // the config is Ed25519-signed by the pinned operator, but the wire line is
+    // not re-parseable so no independent replay is possible. Reporting this as
+    // AUTHORISED/exit-0 is the fleet P0 (parity with kit 706d644): it is a
+    // distinct reduced-scope state (exit 4), never VERIFIED and never INVALID.
+    console.log(`REDUCED SCOPE (authorised-unparseable): signed by pinned operator key; ` +
+      `kernel-attested request binding (the kernel's audit commits to sha256 of the exact bytes it judged and it matches request_sha256); ` +
+      `wire line not re-parseable (${receipt.request_parse_error}); no independent replay — NOT independently verified ${receiptPath}`);
+    process.exit(4);
   }
   if (result.outcome === "unpinned") {
     console.log(`AUTHENTIC + REPLAY-CONSISTENT, authority NOT established (signed by ${receipt.signed_config.pubkey}, verify ${receipt.signed_config.pubkey} out-of-band)`);
