@@ -19,4 +19,5 @@ jobs:
       - run: node test/receipt-verify.test.cjs
       - run: node test/unparseable-forge.test.cjs
       - run: node test/pathological-number.test.cjs
+      - run: node test/verify-profile.test.cjs
       - run: node scripts/claims-drift.mjs
