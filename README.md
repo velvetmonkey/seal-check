@@ -26,7 +26,7 @@ The page bundles the audited wasm, re-runs the kernel over the exact bytes, and 
 
 **1-minute showcase — two honest paths**
 
-*Terminal (same wasm, no browser):* `node test/verify-file.cjs <receipt> --expected-config-pubkey <independently-provisioned-public-key>` exits 0 only when signature, replay, bindings, and the relying-party pin all agree. Unpinned consistency exits 3; verification failure exits 1. The browser and terminal load the identical `wasm/seal.js`.
+*Terminal (same wasm, no browser):* `node test/verify-file.cjs <receipt> --expected-config-pubkey <independently-provisioned-public-key>` exits 0 only when signature, replay, bindings, and the relying-party pin all agree. Unpinned consistency exits 3; verification failure exits 1. An unparseable-request receipt (§11.1) is a distinct reduced-scope state — signature and kernel-attested request binding hold but no independent replay is possible — and exits 4, never 0. The browser and terminal load the identical `wasm/seal.js`.
 
 **Paste this — a real receipt you can try right now**
 

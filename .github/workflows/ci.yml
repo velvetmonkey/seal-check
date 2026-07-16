@@ -17,4 +17,5 @@ jobs:
       - run: node test/receipt-harness.cjs
       - run: node test/cross-receipt.test.cjs
       - run: node test/receipt-verify.test.cjs
+      - run: node test/unparseable-forge.test.cjs
       - run: node scripts/claims-drift.mjs

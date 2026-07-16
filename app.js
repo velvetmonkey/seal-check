@@ -464,7 +464,7 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
     s.textContent = "AUTHORISED: signed by pinned operator key.";
     s.className = "reason ok";
   } else if (r.outcome === "authorised-unparseable") {
-    s.textContent = "AUTHORISED (raw-line identity only): signed by pinned operator key; the wire line could not be re-parsed, so the verdict rests on the kernel material carried, not on replay.";
+    s.textContent = "REDUCED SCOPE (authorised-unparseable): signed by pinned operator key; the wire line could not be re-parsed, so no independent replay was performed — NOT independently verified. The verdict rests on the kernel material carried.";
     s.className = "reason warn";
   } else if (r.outcome === "unpinned") {
     s.textContent = `AUTHENTIC + REPLAY-CONSISTENT, authority NOT established (signed by ${receipt.signed_config.pubkey}, verify it out-of-band).`;

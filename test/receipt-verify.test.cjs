@@ -252,11 +252,14 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
     uf.formatOk === false || (uf.kernelRequestBinding === false && uf.outcome === "failure"),
     uf.outcome);
 
-  // CLI: distinct state maps to exit 0 with the reduced-scope banner.
+  // CLI: the unparseable receipt maps to the DISTINCT reduced-scope state
+  // (exit 4), never AUTHORISED/exit-0 (fleet P0, parity with kit 706d644) and
+  // never a hard failure. INVALID(1) != REDUCED-SCOPE(4) != VERIFIED(0).
   const unpPath = path.join(__dirname, "fixtures", "unparseable-block.receipt.json");
   let cliUnp = cli(unpPath, "--expected-config-pubkey", cfg.PUBKEY);
-  check("verify-file CLI: unparseable + pin exits 0 with kernel-attested-binding banner",
-    cliUnp.status === 0 && cliUnp.stdout.includes("AUTHORISED (kernel-attested request binding)"),
+  check("verify-file CLI: unparseable + pin exits 4 REDUCED SCOPE, never AUTHORISED/0",
+    cliUnp.status === 4 && cliUnp.stdout.includes("REDUCED SCOPE (authorised-unparseable)")
+      && !cliUnp.stdout.includes("AUTHORISED:"),
     `status ${cliUnp.status}: ${cliUnp.stdout}${cliUnp.stderr}`);
   cliUnp = cli(unpPath);
   check("verify-file CLI: unparseable without pin exits 3/UNPINNED", cliUnp.status === 3);
