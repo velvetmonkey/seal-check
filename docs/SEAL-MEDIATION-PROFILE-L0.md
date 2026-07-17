@@ -195,7 +195,7 @@ Provenance the public Lean proofs **assert** about the kernel source. This block
     ]
   },
   "kernel_identity": {
-    "wasm_sha256": "ff1bfd68d7be51b6a395f94dfc46b2fb27ed11dc5833af6a84675f42f9730546",
+    "wasm_sha256": "a37901811df4767fd08142243622b8372254e6ec5bd2d3aca18f0e61d0f109af",
     "self_verified_in_browser": true,
     "note": "Binary identity of the evaluator actually executed. Hashed in your browser from the loaded bytes and compared to a pinned constant. This is the ONLY thing verified here."
   },

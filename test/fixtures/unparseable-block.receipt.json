@@ -1,6 +1,6 @@
 {
   "seal_receipt": "v2",
-  "now": 1784228464642,
+  "now": 1784245195380,
   "request_sha256": "c88367514666fdf3ec74b6157deeae7ea2018bea9ce87d6e64120502df81fd30",
   "request_parse_error": "cannot parse mediated request for receipt: number out of range at line 1 column 145",
   "bypass": false,
@@ -23,13 +23,13 @@
   ],
   "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"7424044781177059438\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"f690ae2830d29772ddb0b9d880c6e24bd6f59d5450d34dc2137c42d99722b9af\\\",\\\"verdict\\\":\\\"deny\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"request_sha256\\\":\\\"c88367514666fdf3ec74b6157deeae7ea2018bea9ce87d6e64120502df81fd30\\\",\\\"tool\\\":\\\"db.execute\\\",\\\"verdict\\\":\\\"deny\\\"}\",\"response\":\"{\\\"id\\\":90,\\\"jsonrpc\\\":\\\"2.0\\\",\\\"result\\\":{\\\"content\\\":[{\\\"text\\\":\\\"approval required: f690ae2830d29772ddb0b9d880c6e24bd6f59d5450d34dc2137c42d99722b9af\\\",\\\"type\\\":\\\"text\\\"}],\\\"isError\\\":true}}\\n\",\"route\":\"block\"}",
   "kernel_identity": {
-    "wasm_sha256": "ff1bfd68d7be51b6a395f94dfc46b2fb27ed11dc5833af6a84675f42f9730546",
+    "wasm_sha256": "a37901811df4767fd08142243622b8372254e6ec5bd2d3aca18f0e61d0f109af",
     "self_verified": true,
     "note": "Re-derive against this wasm; the native executor is identified separately, not proven equivalent."
   },
   "host_identity": {
-    "native_executable_sha256": "26cb2f13c14e501ef7033b5ff13ea67530d03b8adebd008e43e10b9ff258706e",
-    "lean_ffi_sha256": "106180322806d2b49abf5c0611f15fa36387c65d82c567626eb4ff38b5c615bf",
+    "native_executable_sha256": "3a4ef83547b92bf2030798b01ea87b0de3ba60a3726d2fec52b747472f364489",
+    "lean_ffi_sha256": "5e3a2830b26ba31ff9713b7237bffa709f7d0325a4d26d9b2c4effd123f4f96b",
     "equivalence": "not_proven"
   },
   "asserted_provenance": {
@@ -43,15 +43,15 @@
     "note": "Source-level provenance asserted by the producer; not established by this receipt."
   },
   "signed_config": {
-    "payload": "{\"epoch\":1,\"safety\":{\"approval\":{\"control_file\":\"/tmp/seal-mint-work-beomx5kb/approvals.ndjson\",\"ttl_seconds\":120},\"tools\":[{\"name\":\"db.execute\",\"mode\":\"guarded\",\"match\":{\"type\":\"contains_any_ci\",\"arg\":\"sql\",\"needles\":[\"drop\"]},\"target\":[{\"literal\":\"db\"},{\"arg\":\"database\"},{\"literal\":\"write\"},{\"arg\":\"sql\"}]}]}}",
-    "signature": "de0f30ec5f6fe16b7e15303ce2f1bf91e268d9de735d5d3e82ddc9947f8ca2becf827db871e8ca78202cc270d92a7df76c9750006dd76a4dc91f0dd41e107104",
+    "payload": "{\"epoch\":1,\"safety\":{\"approval\":{\"control_file\":\"/tmp/seal-mint-work-3t29nnye/approvals.ndjson\",\"ttl_seconds\":120},\"tools\":[{\"name\":\"db.execute\",\"mode\":\"guarded\",\"match\":{\"type\":\"contains_any_ci\",\"arg\":\"sql\",\"needles\":[\"drop\"]},\"target\":[{\"literal\":\"db\"},{\"arg\":\"database\"},{\"literal\":\"write\"},{\"arg\":\"sql\"}]}]}}",
+    "signature": "882f980013414b8a715a7519ca249d0d65da225b56ef40d88679686efa2bb14072dbe340e72c1044159f4f4a6d6c9e8eea07d58110d725a91e3c01859acaac0a",
     "pubkey": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
   },
   "kernel_config": {
     "epoch": 1,
     "safety": {
       "approval": {
-        "control_file": "/tmp/seal-mint-work-beomx5kb/approvals.ndjson",
+        "control_file": "/tmp/seal-mint-work-3t29nnye/approvals.ndjson",
         "ttl_seconds": 120
       },
       "tools": [

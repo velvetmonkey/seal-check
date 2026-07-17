@@ -5,7 +5,8 @@
 //
 // A wire line carrying a monster-exponent number (1e9999999999) used to split
 // the fleet: the OLD d3067bc0 wasm returned classify-default passthrough — a
-// mediation BYPASS in the browser lane. The repinned ff1bfd68 kernel refuses it
+// mediation BYPASS in the browser lane. The ff1bfd68 repin closed it (guard
+// carried forward unchanged by the current a3790181 kernel): the line is refused
 // BEFORE Json.parse (Seal.JsonUtil.wireNumbersSafe) and the refuse route is
 // `block`. This drives the SHIPPED in-browser wasm directly and pins: block,
 // never passthrough, no crash — same input, same verdict as every fleet copy.
