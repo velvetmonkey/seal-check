@@ -42,7 +42,7 @@
   ],
   "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"8945306314002133198\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"6bff1759cf3c00f781f0b15d428f4cf84e59f8b10be48dd4dd742175a3e6f984\\\",\\\"verdict\\\":\\\"allow\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"},{\\\"certHash\\\":\\\"359907721516049332\\\",\\\"kernel\\\":\\\"convergence\\\",\\\"reason\\\":\\\"convergent op admitted: orset.add\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"request_sha256\\\":\\\"c423e524f58c6bfff5e750dabd761795af1afc08ba895dd2322729f424f941ca\\\",\\\"tool\\\":\\\"store.update\\\",\\\"verdict\\\":\\\"allow\\\"}\",\"route\":\"forward\"}",
   "kernel_identity": {
-    "wasm_sha256": "a37901811df4767fd08142243622b8372254e6ec5bd2d3aca18f0e61d0f109af",
+    "wasm_sha256": "d7d81e277ba0b5e9df385129d86abf6f7469e6da2a65bb2ec35626caa44ea2be",
     "self_verified": true,
     "note": "Binary identity of the evaluator actually executed. Hashed in your browser from the loaded bytes and compared to a pinned constant. This is the ONLY thing verified here."
   },

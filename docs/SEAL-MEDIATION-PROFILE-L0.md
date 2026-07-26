@@ -175,7 +175,12 @@ Provenance the public Lean proofs **assert** about the kernel source. This block
 - `note` (string) — disclosure text stating this is asserted, not verified, and not
   part of the hash.
 
-### Canonical example (byte-exact BLOCK receipt, 2062 bytes)
+### Historical canonical example (byte-exact BLOCK receipt, 2062 bytes)
+
+This receipt remains scoped to the `a3790181…` kernel that actually made the
+recorded decision. It is historical schema-v0 evidence, not a current-kernel
+fixture; its kernel identity is intentionally not rewritten when the served
+kernel advances.
 ```json
 {
   "seal_check_receipt": "v0",

@@ -14,15 +14,15 @@ import { buildSignedConfig, buildStepInput, parseVerdict } from "./seal-config.j
 import { assembleReceiptV2, canonicalRequest, canonicalRequestSha256 } from "./receipt-format.js";
 
 // --- pinned kernel identity (see AUDIT.md) ----------------------------------
-// sha256 of wasm/seal.wasm, repinned 2026-07-17 to the 7-kernel policy-bundle
-// DX build (mcp-seal-dev cc79c86 / seal-host feat/dx-surface-7-kernels; supersedes
+// sha256 of wasm/seal.wasm, repinned 2026-07-26 to the current fleet build
+// (supersedes the prior 7-kernel policy-bundle DX build, which superseded
 // ff1bfd68, the pathological-number fail-closed build whose 1e9999999999 guard is
 // carried forward unchanged; ff1bfd68 superseded d3067bc0, which returned
 // classify-default passthrough on that input). This is
 // THE kernel id and the ONLY thing seal-check verifies in the browser. Toolchain +
 // axioms below are LABELLED provenance the public Lean proofs assert — NOT verified
 // here, NOT blended into the hash.
-export const KERNEL_WASM_SHA256 = "a37901811df4767fd08142243622b8372254e6ec5bd2d3aca18f0e61d0f109af";
+export const KERNEL_WASM_SHA256 = "d7d81e277ba0b5e9df385129d86abf6f7469e6da2a65bb2ec35626caa44ea2be";
 export const WASM_URL = "wasm/seal.wasm";
 export const LEAN_TOOLCHAIN = "leanprover/lean4:v4.28.0";
 export const KERNEL_AXIOMS = ["propext", "Classical.choice", "Quot.sound"];
