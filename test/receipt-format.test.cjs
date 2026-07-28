@@ -181,6 +181,12 @@ function check(name, got, want) {
   // --- §11 validation: well-formed v2 passes
   r = F.validateReceipt(v2r);
   check("validateReceipt v2 well-formed", JSON.stringify([r.ok, r.version, r.errors]), JSON.stringify([true, "v2", []]));
+  const current = { ...v2r, record_type: "seal.authorization-decision", record_version: 2 };
+  delete current.seal_receipt;
+  r = F.validateReceipt(current);
+  check("authorization-decision validates through v2", JSON.stringify([r.ok, r.version, r.errors]), JSON.stringify([true, "v2", []]));
+  r = F.validateReceipt({ ...current, args_hash: "0".repeat(64) });
+  check("authorization-decision retains v2 derived-field checks", r.ok, false);
   r = F.validateReceipt({ ...v2r, authority_trusted: true });
   check("v2 rejects receipt-supplied authority_trusted", r.ok, false);
   const missingSignedConfig = { ...v2r }; delete missingSignedConfig.signed_config;
