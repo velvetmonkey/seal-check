@@ -234,6 +234,7 @@ export function validateReceipt(r) {
 
   let version = null;
   if (r.seal_receipt === RECEIPT_SCHEMA_VERSION_V2) version = "v2";
+  else if (r.record_type === "seal.authorization-decision" && r.record_version === 2) version = "v2";
   else if (r.seal_receipt === RECEIPT_SCHEMA_VERSION) version = "v1";
   else if (r.seal_live_receipt === "v0") version = "v0-live";
   else if ("seal_check_receipt" in r) {
