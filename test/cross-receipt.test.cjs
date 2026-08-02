@@ -47,7 +47,7 @@ function check(name, cond, detail = "") {
   // Produce through the SHIPPED pipeline: decideRaw + buildReceipt.
   const call = {
     tool: "store.update", args: { op: "orset.add", key: "k1" },
-    approvals: [cfg.stableHash(["store.update", "store"])], now: 1000,
+    approvals: [cfg.guardTarget("store.update", { op: "orset.add", key: "k1" })], now: 1000,
   };
   const res = await K.decideRaw(cfg.CFG_STANDARD, call);
   const sha = await K.verifyKernelSha();

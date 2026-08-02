@@ -6,7 +6,7 @@
 // Each entry runs against the compiled black-box kernel via kernel.js. The actual
 // deny_kernel is read back from the verdict at runtime, so the displayed result is
 // always the kernel's, not a hardcoded claim.
-import { SCENARIOS, CFG_TEMPORAL, stableHash } from "./seal-config.js";
+import { SCENARIOS, CFG_TEMPORAL, guardTarget } from "./seal-config.js";
 
 const S = (k) => SCENARIOS[k];
 
@@ -68,15 +68,14 @@ export const CORPUS = [
     run: "seq",
     config: CFG_TEMPORAL,
     tool: "db.execute",
-    // Approval target = stableHash([toolName, ...resolved target parts]). Both steps
-    // are approved so SAFETY passes — leaving the TEMPORAL kernel as the denier of the
-    // post-revoke db.execute (the point of the trace).
+    // Both exact full-argument targets are approved so SAFETY passes — leaving
+    // the TEMPORAL kernel as the denier of the post-revoke call.
     steps: [
-      { tool: "session.revoke", args: {}, approvals: [stableHash(["session.revoke", "revoke"])] },
+      { tool: "session.revoke", args: {}, approvals: [guardTarget("session.revoke", {})] },
       {
         tool: "db.execute",
         args: { database: "prod", sql: "drop table users" },
-        approvals: [stableHash(["db.execute", "db", "prod", "write", "drop table users"])],
+        approvals: [guardTarget("db.execute", { database: "prod", sql: "drop table users" })],
       },
     ],
   },

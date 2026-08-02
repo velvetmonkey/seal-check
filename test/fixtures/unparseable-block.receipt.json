@@ -1,17 +1,17 @@
 {
   "seal_receipt": "v2",
-  "now": 1785063849336,
-  "request_sha256": "c88367514666fdf3ec74b6157deeae7ea2018bea9ce87d6e64120502df81fd30",
-  "request_parse_error": "cannot parse mediated request for receipt: number out of range at line 1 column 145",
+  "now": 1785635574527,
+  "request_sha256": "905d74b5fd7fdd76eb8ae361e655aacc6b3a948760df2373b7ec568fd7b08ad5",
+  "request_parse_error": "mediated request lacks object params.arguments",
   "bypass": false,
   "verdict": "BLOCK",
-  "reason": "safety kernel: ea94cd4681dda88a124f6974a3c766da185a6bd2982ef20edb83ab0635f101ae",
+  "reason": "safety kernel: no matching policy rule",
   "deny_kernel": "safety",
   "certs": [
     {
-      "certHash": "3448743449617441722",
+      "certHash": "2198242906751047586",
       "kernel": "safety",
-      "reason": "ea94cd4681dda88a124f6974a3c766da185a6bd2982ef20edb83ab0635f101ae",
+      "reason": "no matching policy rule",
       "verdict": "deny"
     },
     {
@@ -21,15 +21,15 @@
       "verdict": "allow"
     }
   ],
-  "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"3448743449617441722\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"ea94cd4681dda88a124f6974a3c766da185a6bd2982ef20edb83ab0635f101ae\\\",\\\"verdict\\\":\\\"deny\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"request_sha256\\\":\\\"c88367514666fdf3ec74b6157deeae7ea2018bea9ce87d6e64120502df81fd30\\\",\\\"tool\\\":\\\"db.execute\\\",\\\"verdict\\\":\\\"deny\\\"}\",\"response\":\"{\\\"id\\\":90,\\\"jsonrpc\\\":\\\"2.0\\\",\\\"result\\\":{\\\"content\\\":[{\\\"text\\\":\\\"approval required: ea94cd4681dda88a124f6974a3c766da185a6bd2982ef20edb83ab0635f101ae\\\",\\\"type\\\":\\\"text\\\"}],\\\"isError\\\":true}}\\n\",\"route\":\"block\"}",
+  "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"2198242906751047586\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"no matching policy rule\\\",\\\"verdict\\\":\\\"deny\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"request_sha256\\\":\\\"905d74b5fd7fdd76eb8ae361e655aacc6b3a948760df2373b7ec568fd7b08ad5\\\",\\\"tool\\\":\\\"db.execute\\\",\\\"verdict\\\":\\\"deny\\\"}\",\"response\":\"{\\\"id\\\":92,\\\"jsonrpc\\\":\\\"2.0\\\",\\\"result\\\":{\\\"content\\\":[{\\\"text\\\":\\\"approval required: no matching policy rule\\\",\\\"type\\\":\\\"text\\\"}],\\\"isError\\\":true}}\\n\",\"route\":\"block\"}",
   "kernel_identity": {
-    "wasm_sha256": "d7d81e277ba0b5e9df385129d86abf6f7469e6da2a65bb2ec35626caa44ea2be",
+    "wasm_sha256": "0b5e792500592b56847f70b1e27e47aecdc65023c7c59fd79695102c465f26ec",
     "self_verified": true,
     "note": "Re-derive against this wasm; the native executor is identified separately, not proven equivalent."
   },
   "host_identity": {
-    "native_executable_sha256": "56cc0a114a813b6598fbfa3adc55f642ae1d44f104a3ab55f0ed097d54276821",
-    "lean_ffi_sha256": "45a00c0d5de303b53f3a58120347c45362a92d648606bb5afc7c234a63a105b7",
+    "native_executable_sha256": "2fe5ca27d0a7616d6679a6177f6d4001e5e97e6e79fe6d6478112b0aa6ab8999",
+    "lean_ffi_sha256": "2be60a2d0177c30f13b78d94e4bd219683fb39871aa13a0cafc0db5e8722bbd2",
     "equivalence": "not_proven"
   },
   "asserted_provenance": {
@@ -40,18 +40,18 @@
       "Classical.choice",
       "Quot.sound"
     ],
-    "note": "Source-level provenance asserted by the producer; not established by this receipt."
+    "note": "Source-level provenance asserted by the producer; not established by this authorization decision."
   },
   "signed_config": {
-    "payload": "{\"epoch\":1,\"safety\":{\"approval\":{\"control_file\":\"/tmp/seal-mint-work-49aywlxq/approvals.ndjson\",\"ttl_seconds\":120},\"tools\":[{\"name\":\"db.execute\",\"mode\":\"guarded\",\"match\":{\"type\":\"contains_any_ci\",\"arg\":\"sql\",\"needles\":[\"drop\"]},\"target\":[{\"full_arguments\":true}]}]}}",
-    "signature": "66316ff021edace35fb39cb16a6f69c6003fb36ebc405eecfa74323f7ffe9a15cba2f8c8743a44c5f83ecd3d1971bd3f2c6e4dadfd291353c0453223225cf709",
+    "payload": "{\"epoch\":1,\"safety\":{\"approval\":{\"control_file\":\"/tmp/seal-mint-work-9pys6ec6/approvals.ndjson\",\"ttl_seconds\":120},\"tools\":[{\"name\":\"db.execute\",\"mode\":\"guarded\",\"match\":{\"type\":\"contains_any_ci\",\"arg\":\"sql\",\"needles\":[\"drop\"]},\"target\":[{\"full_arguments\":true}]}]}}",
+    "signature": "135ae387892b190fe3ff17dec8ad8e9f5001e0667c9ec7dd328108eac019e7af522fefd669de49e12927cbd3aac3db97be278140d72438c1363a01271705b607",
     "pubkey": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
   },
   "kernel_config": {
     "epoch": 1,
     "safety": {
       "approval": {
-        "control_file": "/tmp/seal-mint-work-49aywlxq/approvals.ndjson",
+        "control_file": "/tmp/seal-mint-work-9pys6ec6/approvals.ndjson",
         "ttl_seconds": 120
       },
       "tools": [

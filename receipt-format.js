@@ -117,10 +117,35 @@ export function capabilityTarget(tool, parts) {
   return stableHashParts([tool, ...parts]);
 }
 
+// Exact mirror of Lean Json.compress for the JSON values admitted as tool
+// arguments: object keys are ordered lexicographically at every depth.
+function canonicalCompact(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalCompact).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${canonicalCompact(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+// Stage-A guarded target. Metadata, request state and input responses are
+// absent on the receipt replay path and therefore contribute explicit frames.
+export function guardTarget(kernelConfig, tool, canonicalParts) {
+  const server = kernelConfig?.server || kernelConfig?.safety?.server || "";
+  return stableHashParts([
+    "seal.guard-target/v2-proposed-meta-all",
+    ...(server === "" ? [tool] : [server, tool]),
+    ...canonicalParts,
+    "meta.absent", "", "requestState.absent", "",
+    "inputResponses.absent", "",
+  ]);
+}
+
 // §3 verifier recompute: resolve each granted_capabilities entry to its
 // approval target. Un-hashed entries ({tool, ...fields}) are recomputed from
 // the policy's target spec — {literal} parts come from the POLICY, {arg}
-// parts from the ENTRY's field of that name. Opaque entries ({target}) are
+// parts from the ENTRY's field of that name, and {full_arguments:true} binds
+// the ENTRY's complete canonical .arguments object. Opaque entries ({target}) are
 // grants whose pre-image the producer did not hold; their 64-hex target is
 // used verbatim (the verifier can re-derive the verdict but cannot check the
 // grant binding — flagged via `opaque`). Returns
@@ -145,11 +170,17 @@ export function capabilityTargetsFromPolicy(kernelConfig, grants) {
         if (!(p.arg in g)) bad = `grant entry for ${g.tool}: missing field ${p.arg}`;
         return String(g[p.arg]);
       }
+      if (p.full_arguments === true) {
+        if (!("arguments" in g)) bad = `grant entry for ${g.tool}: missing field arguments`;
+        return canonicalCompact(g.arguments);
+      }
       bad = `grant entry for ${g.tool}: unrecognized target-spec part`;
       return "";
     });
     if (bad) { errors.push(bad); continue; }
-    approvals.push(capabilityTarget(g.tool, parts));
+    approvals.push(spec.target.some((p) => p.full_arguments === true)
+      ? guardTarget(kernelConfig, g.tool, parts)
+      : capabilityTarget(g.tool, parts));
   }
   return { approvals, opaque, errors };
 }

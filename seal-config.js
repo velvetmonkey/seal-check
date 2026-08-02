@@ -36,6 +36,25 @@ export function stableHash(parts) {
   return stableHashParts(parts);
 }
 
+const canonicalJson = (value) => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+};
+
+// Stage-A guarded target: domain + tool + complete canonical arguments and
+// explicit absence frames for metadata, request state and input responses.
+export function guardTarget(tool, args, server = "") {
+  return stableHash([
+    "seal.guard-target/v2-proposed-meta-all", ...(server === "" ? [tool] : [server, tool]), canonicalJson(args),
+    "meta.absent", "", "requestState.absent", "",
+    "inputResponses.absent", "",
+  ]);
+}
+
 // Real Ed25519 over the EXACT compact payload string accepted by df42 seal_init.
 // Return every value from the same signing operation so later receipt emission
 // never needs to reconstruct (and potentially drift) the signed bytes. Kept async
@@ -56,48 +75,46 @@ export async function buildEnvelope(config) {
 const safety = (tools) => ({ approval: { control_file: "X", ttl_seconds: 120 }, tools });
 const DB = { name: "db.execute", mode: "guarded",
   match: { type: "contains_any_ci", arg: "sql", needles: ["drop", "delete", "truncate"] },
-  target: [{ literal: "db" }, { arg: "database" }, { literal: "write" }, { arg: "sql" }] };
-const G = (name, t) => ({ name, mode: "guarded", match: { type: "always" }, target: t });
+  target: [{ full_arguments: true }] };
+const G = (name) => ({ name, mode: "guarded", match: { type: "always" },
+  target: [{ full_arguments: true }] });
 const DENY_APPROVE = { name: "approve", mode: "deny", match: { type: "always" }, target: [] };
 const CONSENSUS = { roster: [1, 2, 3], votes_file: "X", high_stakes: ["payments.send"] };
 
 // Demo 1 — determinism differential: db.execute + approve safety-gated;
 // payments.send is consensus-gated (safety allows it once approved).
 const CFG_DEMO1 = { epoch: 1,
-  safety: safety([DB, G("payments.send", [{ literal: "pay" }]), DENY_APPROVE]),
+  safety: safety([DB, G("payments.send"), DENY_APPROVE]),
   temporal: { policies: [] }, consensus: CONSENSUS };
 // Demo 2 — policy swap: payment safety-gated; policy B adds the quorum rule.
-const CFG_PAY_A = { epoch: 1, safety: safety([G("payments.send", [{ literal: "pay" }])]), temporal: { policies: [] } };
+const CFG_PAY_A = { epoch: 1, safety: safety([G("payments.send")]), temporal: { policies: [] } };
 const CFG_PAY_B = { ...CFG_PAY_A, consensus: CONSENSUS };
 // Demo 3 — confident hallucination: store.update safety-gated + convergence kernel.
-const CFG_STORE = { epoch: 1, safety: safety([G("store.update", [{ literal: "store" }])]),
+const CFG_STORE = { epoch: 1, safety: safety([G("store.update")]),
   temporal: { policies: [] }, convergence: { tools: [{ tool: "store.update", op_arg: "op" }] } };
 // Temporal — out-of-order / stale-capability: a destructive db.execute AFTER a session.revoke is
 // forbidden by a real temporal policy. Needs an ordered trace (revoke then the call), so it is
 // decided as a sequence (seal_init once, a seal_decide per step) — see decideSeq.
 export const CFG_TEMPORAL = { epoch: 1,
-  safety: safety([DB, G("session.revoke", [{ literal: "revoke" }])]),
+  safety: safety([DB, G("session.revoke")]),
   temporal: { policies: [{ name: "no-destructive-after-revoke", type: "no_after",
     trigger: ["session.revoke"], forbidden: ["db.execute"] }] } };
 // "Fire your own" box: a rich multi-kernel config covering the common tools.
 export const CFG_STANDARD = { epoch: 1,
-  safety: safety([DB, G("payments.send", [{ literal: "pay" }]), G("session.revoke", [{ literal: "revoke" }]),
-                  G("store.update", [{ literal: "store" }]), G("key.use", [{ literal: "key" }]), DENY_APPROVE]),
+  safety: safety([DB, G("payments.send"), G("session.revoke"),
+                  G("store.update"), G("key.use"), DENY_APPROVE]),
   temporal: { policies: [] }, consensus: CONSENSUS,
   convergence: { tools: [{ tool: "store.update", op_arg: "op" }] } };
-
-const PAY_T = stableHash(["payments.send", "pay"]);
-const STORE_T = stableHash(["store.update", "store"]);
 
 // scenario key -> {config, tool, args, approvals, demo, label}
 export const SCENARIOS = {
   "destructive-sql": { config: CFG_DEMO1, tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [], demo: 1, label: "Drop the production users table (no approval)" },
   "self-approve":    { config: CFG_DEMO1, tool: "approve", args: { target: 1 }, approvals: [], demo: 1, label: "Self-approve my own destructive call" },
-  "wire-40k":        { config: CFG_DEMO1, tool: "payments.send", args: { amount: 40000, to: "GB-unlisted" }, approvals: [PAY_T], demo: 1, label: "Wire £40,000 to an unlisted account" },
-  "pay-before":      { config: CFG_PAY_A, tool: "payments.send", args: { amount: 40000, to: "supplier-77" }, approvals: [PAY_T], demo: 2, label: "Policy A — no quorum rule" },
-  "pay-after":       { config: CFG_PAY_B, tool: "payments.send", args: { amount: 40000, to: "supplier-77" }, approvals: [PAY_T], demo: 2, label: "Policy B — + 2-of-3 quorum" },
-  "store-safe":      { config: CFG_STORE, tool: "store.update", args: { op: "orset.add", key: "k1" }, approvals: [STORE_T], demo: 3, label: "store.update { op: orset.add }" },
-  "store-subtle":    { config: CFG_STORE, tool: "store.update", args: { op: "assign", key: "k1" }, approvals: [STORE_T], demo: 3, label: "store.update { op: assign }" },
+  "wire-40k":        { config: CFG_DEMO1, tool: "payments.send", args: { amount: 40000, to: "GB-unlisted" }, approvals: [guardTarget("payments.send", { amount: 40000, to: "GB-unlisted" })], demo: 1, label: "Wire £40,000 to an unlisted account" },
+  "pay-before":      { config: CFG_PAY_A, tool: "payments.send", args: { amount: 40000, to: "supplier-77" }, approvals: [guardTarget("payments.send", { amount: 40000, to: "supplier-77" })], demo: 2, label: "Policy A — no quorum rule" },
+  "pay-after":       { config: CFG_PAY_B, tool: "payments.send", args: { amount: 40000, to: "supplier-77" }, approvals: [guardTarget("payments.send", { amount: 40000, to: "supplier-77" })], demo: 2, label: "Policy B — + 2-of-3 quorum" },
+  "store-safe":      { config: CFG_STORE, tool: "store.update", args: { op: "orset.add", key: "k1" }, approvals: [guardTarget("store.update", { op: "orset.add", key: "k1" })], demo: 3, label: "store.update { op: orset.add }" },
+  "store-subtle":    { config: CFG_STORE, tool: "store.update", args: { op: "assign", key: "k1" }, approvals: [guardTarget("store.update", { op: "assign", key: "k1" })], demo: 3, label: "store.update { op: assign }" },
 };
 
 const rpc = (tool, args, id = 1) => JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name: tool, arguments: args } });

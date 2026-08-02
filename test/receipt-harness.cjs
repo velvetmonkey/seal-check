@@ -45,9 +45,9 @@ const SealModule = globalThis.SealModule;
   };
 
   const block = await decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
-  const allow = await decide(cfg.CFG_STANDARD, { tool: "store.update", args: { op: "orset.add", key: "k1" }, approvals: [cfg.stableHash(["store.update", "store"])] });
+  const allow = await decide(cfg.CFG_STANDARD, { tool: "store.update", args: { op: "orset.add", key: "k1" }, approvals: [cfg.guardTarget("store.update", { op: "orset.add", key: "k1" })] });
 
-  const expectSha = "d7d81e277ba0b5e9df385129d86abf6f7469e6da2a65bb2ec35626caa44ea2be";
+  const expectSha = "0b5e792500592b56847f70b1e27e47aecdc65023c7c59fd79695102c465f26ec";
   let ok = true;
   const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`); ok = ok && cond; };
   const blockR = JSON.parse(block), allowR = JSON.parse(allow);
@@ -76,7 +76,7 @@ const SealModule = globalThis.SealModule;
   check("asserted_provenance NOT verified", allowR.asserted_provenance.verified_in_browser === false);
   check("opaque grant carried for raw-target approval",
     allowR.granted_capabilities.length === 1 &&
-    allowR.granted_capabilities[0].target === cfg.stableHash(["store.update", "store"]));
+    allowR.granted_capabilities[0].target === cfg.guardTarget("store.update", { op: "orset.add", key: "k1" }));
   // determinism: re-run identical input -> byte-identical receipt
   const block2 = await decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
   check("determinism: block == block2 (byte-identical)", block === block2);

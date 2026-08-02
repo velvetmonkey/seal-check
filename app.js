@@ -4,7 +4,7 @@
 import {
   ready, verifyKernelSha, decideRaw, decideSeqRaw, buildReceipt, canonicalReceiptJson,
 } from "./kernel.js";
-import { CFG_STANDARD, stableHash } from "./seal-config.js";
+import { CFG_STANDARD, guardTarget } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
 import { decodeReceiptParam, verifyReceipt, callSummary } from "./receipt.js";
 
@@ -25,7 +25,7 @@ const EXAMPLES = {
   allow: `{
   "tool": "store.update",
   "args": { "op": "orset.add", "key": "k1" },
-  "approvals": ["${stableHash(["store.update", "store"])}"]
+  "approvals": ["${guardTarget("store.update", { op: "orset.add", key: "k1" })}"]
 }`,
 };
 

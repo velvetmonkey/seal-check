@@ -42,7 +42,7 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   // Produce a genuine receipt through the SHIPPED pipeline.
   const call = {
     tool: "store.update", args: { op: "orset.add", key: "k1" },
-    approvals: [cfg.stableHash(["store.update", "store"])], now: 1000,
+    approvals: [cfg.guardTarget("store.update", { op: "orset.add", key: "k1" })], now: 1000,
   };
   const res = await K.decideRaw(cfg.CFG_STANDARD, call);
   const sha = await K.verifyKernelSha();
@@ -208,9 +208,9 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   fs.rmSync(cliDir, { recursive: true, force: true });
 
   // --- §11.1 unparseable-request receipt: REAL seal-host receipt -------------
-  // Produced by seal-host main @ 3a74dbf on the pinned 1e309 line
-  // (test/host_path.rs:722 form): serde cannot re-parse it, the Lean kernel
-  // mediates it. The verifier must report a DISTINCT reduced-scope state —
+  // Produced by the native seal-host mint on the pinned argument-less call:
+  // request_parts cannot derive arguments, while the Lean kernel mediates it.
+  // The verifier must report a DISTINCT reduced-scope state —
   // never requestHashMatch:true (the undefined === undefined false PASS this
   // test exists to prevent), and never a bare AUTHORISED.
   const unp = JSON.parse(fs.readFileSync(
