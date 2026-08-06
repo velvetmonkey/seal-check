@@ -34,6 +34,7 @@
 - Seal's audit chain is tamper-EVIDENT, not tamper-IMPOSSIBLE.
 - Seal does NOT make the AI smarter or prevent hallucinations; it stops an unapproved effect.
 - Axiom footprint {propext, Classical.choice, Quot.sound} is the minimal classical fragment; no extra axioms.
+- The axiom-footprint line is a per-theorem ceiling for theorems named in the family's axiom-pin gates; it is not a repository-wide census. Pin scope and named exceptions are indexed in the seal claims matrix (seal/docs/CLAIMS-MATRIX.md).
 <!-- claims:end -->
 
 ## Trust boundaries
