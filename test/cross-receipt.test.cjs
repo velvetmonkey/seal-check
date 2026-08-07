@@ -67,10 +67,12 @@ function check(name, cond, detail = "") {
   check("receipt byte-identical to committed fixture", json === fs.readFileSync(FIXTURE, "utf8"),
     "regenerate with --update if the producer changed intentionally");
 
-  // Verify through the SHIPPED verifier.
-  const out = await R.verifyReceipt(JSON.parse(json), { expectedConfigPubkey: cfg.PUBKEY });
+  // Verify through the SHIPPED verifier, handed the receipt BYTES (§12.6):
+  // this is the cross-fleet case, where the document is what arrived.
+  const out = await R.verifyReceipt(json, { expectedConfigPubkey: cfg.PUBKEY });
   check("verifyReceipt: schema valid (v2)", out.formatOk && out.formatVersion === "v2",
     (out.formatErrors || []).join("; "));
+  check("verifyReceipt: the received document itself was checked", out.document_checked === true);
   check("verifyReceipt: kernel sha match", out.kernelShaMatch === true);
   check("verifyReceipt: request hash match", out.requestHashMatch === true);
   check("verifyReceipt: verdict re-derived (ALLOW)", out.verdictMatch === true && out.rederived === "ALLOW");

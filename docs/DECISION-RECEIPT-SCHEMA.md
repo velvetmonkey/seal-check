@@ -211,7 +211,10 @@ item.)
 
 0. Validate the shape FIRST (`validateReceipt`): version discriminator,
    field table, hard split, stored-line-vs-derived-line equality. A
-   malformed receipt never reaches the kernel.
+   malformed receipt never reaches the kernel. Pass the **received document
+   text**, not a parsed object — §12.6; only then are the wire ambiguities
+   `JSON.parse` collapses (duplicate discriminator members above all)
+   visible at all.
 1. `kernel_identity.wasm_sha256` equals the verifier's own hash of the
    binary it will re-run, and that binary matches the audited pin.
 2. Derive the canonical line from the same `(tool, arguments)` used for
@@ -265,9 +268,15 @@ stableHashParts(parts)                  // -> hex      (§3)
 capabilityTarget(tool, parts)           // -> hex      (§3 convention)
 capabilityTargetsFromPolicy(cfg, grants) // -> { approvals, opaque, errors } (§3 resolve)
 assembleReceiptV1(fields)               // -> object   (§1 fixed key order, byte-stable)
-validateReceipt(obj, opts?)             // -> { ok, version, errors,
-                                        //      receipt_signature_valid? }  (§12: v3 adds
-                                        //      opts.ed25519Verify + the v3-only flag)
+validateReceipt(textOrObj, opts?)       // -> { ok, version, errors, document_checked,
+                                        //      record?, receipt_signature_valid? }
+                                        //      (§12: v3 adds opts.ed25519Verify + the
+                                        //      v3-only flag; §12.6: pass the RECEIVED
+                                        //      TEXT — an object cannot be checked
+                                        //      against the bytes)
+validateReceiptDocument(text, opts?)    // -> same, explicit document entry point (§12.6)
+scanReceiptDocument(text)               // -> { ok, errors, topLevel } (§12.6 tokeniser)
+DISCRIMINATOR_KEYS                      // the five version-deciding key names (§12.6)
 receiptSignaturePreimage(record)        // -> Uint8Array (§12.2 Object B preimage)
 postStateHash(operationId, frameSha256) // -> hex      (§12.1 operation-state bind)
 verifyReceiptSignature(record, ed25519Verify) // -> { receipt_signature_valid, errors }
@@ -451,3 +460,85 @@ path with a producer-mirroring minted vector, and runs the negative
 controls: flipped `signature.value`, flipped covered field, removed
 `signature`, reordered keys, unknown `record_version`, unknown enum tokens,
 frame/bind mismatches. Each control is REFUSED distinctly.
+
+### 12.6 The received DOCUMENT — a CONTRACT CHANGE for callers
+
+Everything above §12.6 validates the object `JSON.parse` produced. That object
+is not the receipt. The receipt is the byte string a producer signed, and
+`JSON.parse` is lossy about it:
+
+* a repeated member collapses to its **last** occurrence;
+* `3`, `3.0`, `3e0` fold to the same double;
+* `"record_version"` and `"record_version"` become the same key.
+
+The exhibit that forced this section (frisk A9): a **real host v3 receipt**
+whose text carries both `"record_version": 3` and `"record_version": 2`
+parses to a v2 object. It classifies as v2, so the Object B signature is never
+verified, and validation returns `ok: true, version: "v2", errors: []` — with
+the signature stripped, the verdict forged to `ALLOW`, and even under an
+always-false Ed25519 primitive. The §12.0 multi-family conflict rule cannot
+see it: after the parse there is genuinely one family with one value. Nothing
+is wrong with the object. The lie is in the bytes.
+
+**The contract.** `validateReceipt` now takes EITHER form, and the choice is
+load-bearing:
+
+```js
+validateReceipt(rawText, { ed25519Verify })  // REQUIRED for anything received
+  // -> { ok, version, errors, document_checked: true, record, … }
+validateReceipt(object,  { ed25519Verify })  // minted-in-process records only
+  // -> { ok, version, errors, document_checked: false, … }
+```
+
+* **Anything that arrived** — a URL fragment, a file, a peer, a queue — MUST be
+  passed as the **raw text**. The document checks are impossible otherwise.
+  `record` carries the parsed object so the caller need not parse twice.
+* **The object form stays supported** for records this process minted, where no
+  received bytes exist. It reports `document_checked: false`, and that flag is
+  not decoration: `ok: true` with `document_checked: false` says *this object
+  is well formed*, never *the bytes we received say this*. A consumer that
+  treats the two as the same thing has the A9 bug.
+* `verifyReceipt(input, …)` (receipt.js) takes the same either/or and surfaces
+  the same `document_checked`. `decodeReceiptDocument()` returns the deep
+  link's raw text; `decodeReceiptParam()` (parsed) remains for callers that
+  only want to *read* fields and must not be used as verification input.
+* Callers updated in this repo: `app.js` (deep link → text), `test/verify-file.cjs`
+  (file bytes → text). Both had the bytes in hand already.
+
+**What the document check does.** Before parsing, the text is walked by a JSON
+**tokeniser** (`scanReceiptDocument`) — not a regex, because a string that
+looks like `"record_version"` may legitimately appear inside a *value*, and
+counting textual occurrences would refuse honest receipts. The scan reports
+only genuine **top-level member names**, with `\u` escapes decoded, and the
+document is refused as MALFORMED when:
+
+1. any of the five discriminator names (`seal_receipt`, `record_type`,
+   `record_version`, `seal_live_receipt`, `seal_check_receipt`) occurs more
+   than once at the top level — the A9 class, including the case where the
+   second occurrence is spelled with escapes;
+2. any other top-level member occurs more than once (a duplicated member is
+   ambiguous about what was signed; no fixture or producer in this repo emits
+   one);
+3. a discriminator name is written with a `\u` escape at all;
+4. `record_version` is written as anything but a bare integer literal
+   (`3.0`, `3e0`, `2.0` are refused — the host producer emits `3`);
+5. the document begins with a BOM, is not well-formed JSON, or carries
+   trailing content. A BOM is **not** stripped: silently repairing input is how
+   a verifier ends up judging bytes nobody sent.
+
+Nothing is canonicalised or re-serialised: the same untouched bytes go to
+`JSON.parse`, so §12.2's `preserve_order` preimage is unaffected.
+
+**Not covered, deliberately.** Duplicate or escaped members *nested* inside
+values are not refused (on v3 they break the signature; v2 carries no Object B
+envelope to break). Key-order normalisation by an intermediary cannot be
+detected after the fact — it breaks the v3 signature and fails closed. Numeric
+spellings of fields other than `record_version` are likewise left to the
+signature. And a caller that hands over an object sees none of this by
+construction — hence `document_checked`.
+
+`test/receipt-document.test.cjs` carries A9 (both oracles, forged and
+unforged), one construction per class above, the lazy-fix traps (a
+discriminator name quoted inside a value; a nested member with that name), and
+the real fixtures — host v3, host v2, fleet v2, unparseable-request — all
+still validating through the document path.

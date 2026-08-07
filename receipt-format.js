@@ -263,12 +263,213 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const HEX128 = /^[0-9a-f]{128}$/;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
+// --- §12.6: the received DOCUMENT, not only the parsed object ------------------
+// A receipt is a byte string somebody signed. `JSON.parse` is LOSSY about that
+// byte string: a repeated member collapses to its last occurrence, `3.0` and
+// `3` fold to the same double, and `"record_version"` and
+// `"record_version"` become the same key. Validating only the parsed object
+// therefore lets an attacker choose which of two documents we believe we
+// received: a real signed v3 record whose TEXT carries both
+// `"record_version": 3` and `"record_version": 2` parses to a v2 object,
+// classifies as v2, never runs the Object B signature check, and comes back
+// `ok: true` — with no conflicting families for the §12.0 rule to see, because
+// after the parse the object genuinely claims one version. The lie is in the
+// bytes, so the bytes are what has to be checked.
+//
+// The five key names that decide which schema (and therefore which crypto) a
+// record is judged under. Repetition or an escaped spelling of ANY of these in
+// the received text is fatal.
+export const DISCRIMINATOR_KEYS = [
+  "seal_receipt", "record_type", "record_version", "seal_live_receipt", "seal_check_receipt",
+];
+
+// A structure-aware JSON reader. NOT a regex over the text: a string that
+// looks like `"record_version"` can legitimately appear inside a VALUE (a
+// reason string, an emitted_bytes blob), and counting textual occurrences
+// would refuse honest receipts. This walks the grammar and reports only what
+// is genuinely a member NAME of the top-level object. It builds no values —
+// the authoritative parse is still `JSON.parse` on the same untouched bytes;
+// nothing here canonicalises, re-serialises, or otherwise disturbs the
+// preimage the signature covers.
+//
+// One honest divergence from `JSON.parse`, and it fails CLOSED: the reader
+// recurses, so a document nested deeper than roughly 10^4 levels exhausts the
+// JS stack and is refused as not-well-formed where `JSON.parse` (iterative)
+// would accept it. Real receipts nest ~5 deep.
+const JSON_ESCAPES = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+const CANONICAL_UINT = /^(0|[1-9][0-9]*)$/;
+
+// Returns { ok, errors, topLevel } where topLevel is a Map of decoded member
+// name -> { count, escaped, numberLiterals }, or null when the document's root
+// is not an object. Structural failures are reported, never thrown.
+export function scanReceiptDocument(text) {
+  const errors = [];
+  if (typeof text !== "string")
+    return { ok: false, errors: ["document: raw receipt text (a string) required"], topLevel: null };
+  if (text.charCodeAt(0) === 0xfeff)
+    return { ok: false, errors: ["document: begins with a byte-order mark — a BOM is not JSON and must not be stripped by a verifier (fail closed, §12.6)"], topLevel: null };
+
+  let i = 0;
+  let topLevel = null;
+  const fail = (msg) => { throw new SyntaxError(`${msg} at offset ${i}`); };
+  const ws = () => {
+    while (i < text.length) {
+      const c = text[i];
+      if (c === " " || c === "\t" || c === "\n" || c === "\r") i++;
+      else break;
+    }
+  };
+  const readString = () => {
+    if (text[i] !== '"') fail("expected a string");
+    i++;
+    let value = "", escaped = false;
+    for (;;) {
+      if (i >= text.length) fail("unterminated string");
+      const c = text[i];
+      if (c === '"') { i++; return { value, escaped }; }
+      if (c === "\\") {
+        escaped = true;
+        i++;
+        const e = text[i++];
+        if (e === "u") {
+          const hex = text.slice(i, i + 4);
+          if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail("invalid \\u escape");
+          value += String.fromCharCode(parseInt(hex, 16));
+          i += 4;
+        } else if (Object.prototype.hasOwnProperty.call(JSON_ESCAPES, e)) {
+          value += JSON_ESCAPES[e];
+        } else fail("invalid escape");
+        continue;
+      }
+      if (c.charCodeAt(0) < 0x20) fail("unescaped control character in string");
+      value += c;
+      i++;
+    }
+  };
+  const readNumber = () => {
+    const start = i;
+    if (text[i] === "-") i++;
+    if (text[i] === "0") i++;
+    else if (text[i] >= "1" && text[i] <= "9") { while (text[i] >= "0" && text[i] <= "9") i++; }
+    else fail("expected a number");
+    if (text[i] === ".") {
+      i++;
+      if (!(text[i] >= "0" && text[i] <= "9")) fail("expected a fraction digit");
+      while (text[i] >= "0" && text[i] <= "9") i++;
+    }
+    if (text[i] === "e" || text[i] === "E") {
+      i++;
+      if (text[i] === "+" || text[i] === "-") i++;
+      if (!(text[i] >= "0" && text[i] <= "9")) fail("expected an exponent digit");
+      while (text[i] >= "0" && text[i] <= "9") i++;
+    }
+    return text.slice(start, i);
+  };
+  const readLiteral = (word) => {
+    if (text.slice(i, i + word.length) !== word) fail("unexpected token");
+    i += word.length;
+  };
+  // Returns the raw source text when the value is a number, else null.
+  const readValue = (depth) => {
+    const c = text[i];
+    if (c === "{") { readObject(depth); return null; }
+    if (c === "[") { readArray(depth); return null; }
+    if (c === '"') { readString(); return null; }
+    if (c === "t") { readLiteral("true"); return null; }
+    if (c === "f") { readLiteral("false"); return null; }
+    if (c === "n") { readLiteral("null"); return null; }
+    return readNumber();
+  };
+  const readArray = (depth) => {
+    i++; ws();
+    if (text[i] === "]") { i++; return; }
+    for (;;) {
+      ws(); readValue(depth + 1); ws();
+      if (text[i] === ",") { i++; continue; }
+      if (text[i] === "]") { i++; return; }
+      fail("expected , or ] in array");
+    }
+  };
+  const readObject = (depth) => {
+    const members = depth === 0 ? new Map() : null;
+    if (members) topLevel = members;
+    i++; ws();
+    if (text[i] === "}") { i++; return; }
+    for (;;) {
+      ws();
+      const name = readString();
+      ws();
+      if (text[i] !== ":") fail("expected : after a member name");
+      i++; ws();
+      const literal = readValue(depth + 1);
+      if (members) {
+        const seen = members.get(name.value) ||
+          { count: 0, escaped: false, numberLiterals: [] };
+        seen.count++;
+        seen.escaped = seen.escaped || name.escaped;
+        if (literal !== null) seen.numberLiterals.push(literal);
+        members.set(name.value, seen);
+      }
+      ws();
+      if (text[i] === ",") { i++; continue; }
+      if (text[i] === "}") { i++; return; }
+      fail("expected , or } in object");
+    }
+  };
+
+  try {
+    ws();
+    if (i >= text.length) fail("empty document");
+    readValue(0);
+    ws();
+    if (i !== text.length) fail("trailing content after the JSON document");
+  } catch (e) {
+    return { ok: false, errors: [`document: not well-formed JSON — ${e.message}`], topLevel: null };
+  }
+
+  if (topLevel) {
+    for (const [name, seen] of topLevel) {
+      const isDisc = DISCRIMINATOR_KEYS.includes(name);
+      if (seen.count > 1) {
+        errors.push(isDisc
+          ? `document: version discriminator "${name}" occurs ${seen.count} times at the top level of the received bytes — JSON.parse keeps only the last, so the document and the parsed record disagree about which schema (and which signature check) applies; refused as MALFORMED (fail closed, §12.6)`
+          : `document: top-level member "${name}" occurs ${seen.count} times in the received bytes — a duplicated member is ambiguous about what was signed and what any two readers will see; refused as MALFORMED (fail closed, §12.6)`);
+      }
+      if (isDisc && seen.escaped) {
+        errors.push(`document: version discriminator "${name}" is written with a \\u escape in the received bytes — a discriminator that only becomes itself after unescaping hides the version from every reader that has not parsed; refused as MALFORMED (fail closed, §12.6)`);
+      }
+      if (name === "record_version") {
+        for (const literal of seen.numberLiterals) {
+          if (!CANONICAL_UINT.test(literal))
+            errors.push(`document: record_version is written as \`${literal}\` — JSON.parse folds that to the same double as the plain integer, so the bytes and the parsed version claim differ; a producer emits a bare integer (fail closed, §12.6)`);
+        }
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors, topLevel };
+}
+
 // Structural validation against the v1/v2/v3 field tables. Returns
-// { ok, version, errors } plus, on v3, `receipt_signature_valid` (the Object B
-// Ed25519 envelope — deliberately NOT named `signature_valid`, which
-// downstream verifiers already use for the DIFFERENT `signed_config` object).
+// { ok, version, errors, document_checked } plus, on v3,
+// `receipt_signature_valid` (the Object B Ed25519 envelope — deliberately NOT
+// named `signature_valid`, which downstream verifiers already use for the
+// DIFFERENT `signed_config` object).
 // version: "v3"|"v2" (current) | "v1" (accepted-legacy) | "v0-live"
 // (grandfathered) | "v0-check" (rejected legacy Schema K) | null (unrecognized).
+//
+// CONTRACT (§12.6), and it is a change: `r` may be EITHER the raw received
+// document text (a string) or an already-parsed object.
+//   * Anything that came off a wire, a file, or a URL fragment MUST be passed
+//     as the TEXT. Only then are the document-level checks possible at all,
+//     and only then does `document_checked: true` come back. `record` carries
+//     the parsed object so the caller need not parse it twice.
+//   * The object form remains supported for records this process MINTED (no
+//     received bytes exist to check) and returns `document_checked: false`.
+//     A `false` there means the version claim was never checked against any
+//     document: a consumer must NOT read `ok: true` on that path as evidence
+//     about what a peer sent. It is not a warning that can be ignored — it is
+//     the difference between "this object is well formed" and "the bytes we
+//     received say this".
 //
 // v3 verification is cryptographic: pass opts.ed25519Verify(message,
 // signature, publicKey) -> boolean (Uint8Array args; e.g. tweetnacl's
@@ -276,6 +477,34 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 // explicit UNVERIFIED error — the module stays dependency-free and the caller
 // cannot silently skip the check.
 export function validateReceipt(r, opts = {}) {
+  if (typeof r === "string") return validateReceiptDocument(r, opts);
+  const out = validateParsedReceipt(r, opts);
+  out.document_checked = false;
+  return out;
+}
+
+// The wire entry point: scan the received bytes for the ambiguities
+// `JSON.parse` would collapse, THEN parse those same untouched bytes and
+// validate the record. Refuses before parsing if the document lies about its
+// own version claim.
+export function validateReceiptDocument(text, opts = {}) {
+  const scan = scanReceiptDocument(text);
+  if (!scan.ok)
+    return { ok: false, version: null, errors: scan.errors, document_checked: true };
+  let record;
+  try {
+    record = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, version: null, document_checked: true,
+      errors: [`document: not parseable JSON — ${e.message}`] };
+  }
+  const out = validateParsedReceipt(record, opts);
+  out.document_checked = true;
+  out.record = record;
+  return out;
+}
+
+function validateParsedReceipt(r, opts = {}) {
   const errors = [];
   if (!isObj(r)) return { ok: false, version: null, errors: ["receipt is not an object"] };
   if ("authority_trusted" in r)
@@ -297,6 +526,11 @@ export function validateReceipt(r, opts = {}) {
   // converts the downgrade into an upgrade attack. Fail closed instead.
   // "Present" = the key exists with a non-undefined value; JSON.parse never
   // yields undefined, so wire records are judged on key presence alone.
+  // This gate reads the PARSED OBJECT, which is exactly its blind spot: a
+  // document repeating one discriminator collapses to a single family here
+  // and the gate has nothing to fire on. That case is caught earlier, on the
+  // bytes, by scanReceiptDocument (§12.6) — the two rules are complements,
+  // and only the document path runs both.
   const discFamilies = [];
   if (r.seal_receipt !== undefined) discFamilies.push("seal_receipt");
   if (r.record_type !== undefined || r.record_version !== undefined)

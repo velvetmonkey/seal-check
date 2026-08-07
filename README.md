@@ -108,6 +108,8 @@ node test/receipt-format.test.cjs
 node test/receipt-harness.cjs
 node test/cross-receipt.test.cjs
 node test/receipt-verify.test.cjs   # negative paths: tampered receipts must FAIL
+node test/receipt-format-v3.test.cjs # v3 record_version 3 + Object B signature
+node test/receipt-document.test.cjs  # §12.6: the received bytes, not just the parsed object
 ```
 
 ## The Seal family

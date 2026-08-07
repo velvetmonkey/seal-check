@@ -100,18 +100,43 @@ export function callSummary(receipt) {
   return { demo: false, tool, argsJson };
 }
 
-// Read #receipt=<base64url> from the URL fragment. Returns the receipt object or null.
-export function decodeReceiptParam() {
+// Read #receipt=<base64url> from the URL fragment. Returns the receipt
+// DOCUMENT — the raw JSON text exactly as it was carried — or null.
+// §12.6: this is what a verifier must hand to validateReceipt/verifyReceipt.
+// Parsing here and passing the object on would throw away the duplicate
+// members, escaped key spellings, and numeric spellings that decide which
+// version claim the document actually makes.
+export function decodeReceiptDocument() {
   const params = new URLSearchParams(location.hash.slice(1));
   const enc = params.get("receipt");
   if (!enc) return null;
-  return JSON.parse(b64urlToStr(enc));
+  return b64urlToStr(enc);
+}
+
+// Parsed-object form of the same link. Kept for callers that only want to READ
+// the fields; it is document-blind and must not be used as the input to
+// verification (see decodeReceiptDocument).
+export function decodeReceiptParam() {
+  const text = decodeReceiptDocument();
+  return text === null ? null : JSON.parse(text);
 }
 
 // Independently verify a receipt. Returns { formatOk, kernelShaMatch,
 // requestHashMatch, rederived, verdictMatch, mediated, allGood, ... } — every
 // field recomputed locally per the spec's §7 verifier obligations.
-export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
+// §12.6 CONTRACT: `input` is EITHER the raw received document text (a string)
+// — required for anything that arrived from a link, a file, or a peer — or an
+// object this process minted itself. Only the text form can be checked for the
+// wire ambiguities `JSON.parse` collapses (duplicate discriminator members
+// above all), and only it comes back with `document_checked: true`.
+export async function verifyReceipt(input, { expectedConfigPubkey } = {}) {
+  // 0. Shape first: document-level ambiguity, version discriminator, field
+  //    table, hard-split rule, stored-line-vs-derived-line equality. A
+  //    malformed receipt never reaches the kernel.
+  const fromDocument = typeof input === "string";
+  const shape = validateReceipt(input);
+  const receipt = fromDocument ? (shape.record ?? null) : input;
+
   const out = {
     receipt,
     signature_valid: false,
@@ -121,12 +146,9 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
     outcome: "failure",
     allGood: false,
     bindingErrors: [],
+    document_checked: shape.document_checked === true,
   };
 
-  // 0. Shape first: version discriminator, field table, hard-split rule,
-  //    stored-line-vs-derived-line equality. A malformed receipt never
-  //    reaches the kernel.
-  const shape = validateReceipt(receipt);
   out.formatOk = shape.ok;
   out.formatVersion = shape.version;
   out.formatErrors = shape.errors;

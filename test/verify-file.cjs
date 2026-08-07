@@ -51,16 +51,19 @@ globalThis.fetch = async (p) => {
 (async () => {
   const R = await import(path.join(ROOT, "receipt.js"));
   const F = await import(path.join(ROOT, "receipt-format.js"));
-  const receipt = JSON.parse(fs.readFileSync(receiptPath, "utf8"));
-  const roundtrip = JSON.stringify(F.assembleReceiptV2(receipt), null, 2) + "\n";
   const source = fs.readFileSync(receiptPath, "utf8");
+  const receipt = JSON.parse(source);
+  const roundtrip = JSON.stringify(F.assembleReceiptV2(receipt), null, 2) + "\n";
   if (roundtrip !== source) {
     console.error(`FAIL non-canonical receipt serialization ${receiptPath}`);
     console.error(`source keys: ${Object.keys(receipt).join(",")}`);
     console.error(`roundtrip keys: ${Object.keys(F.assembleReceiptV2(receipt)).join(",")}`);
     process.exit(1);
   }
-  const result = await R.verifyReceipt(receipt, { expectedConfigPubkey });
+  // §12.6: the FILE BYTES are the receipt. Passing `source` (not the parsed
+  // object) is what lets the verifier see a repeated version discriminator
+  // that JSON.parse would silently collapse to its last occurrence.
+  const result = await R.verifyReceipt(source, { expectedConfigPubkey });
   console.log(`signature_valid: ${result.signature_valid}`);
   console.log(`kernel_replay_consistent: ${result.kernel_replay_consistent}`);
   console.log(`authority_trusted: ${result.authority_trusted}`);

@@ -6,7 +6,7 @@ import {
 } from "./kernel.js";
 import { CFG_STANDARD, guardTarget } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
-import { decodeReceiptParam, verifyReceipt, callSummary } from "./receipt.js";
+import { decodeReceiptDocument, verifyReceipt, callSummary } from "./receipt.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -394,10 +394,18 @@ function renderControlReceipt(receipt) {
   s.className = "reason bad";
   $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
-async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) {
+// `input` is the received receipt DOCUMENT (raw JSON text) for anything that
+// arrived from a link, or a minted receipt object for the local demo. §12.6:
+// the text form is the one that can be checked against the bytes.
+async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
   if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
   let r;
-  try { r = await verifyReceipt(receipt); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
+  try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
+  const receipt = r.receipt;
+  if (!receipt) {
+    return showReceiptError("receipt failed schema validation: " +
+      (r.formatErrors || []).join("; "), focus);
+  }
 
   if (receipt.bypass) return renderControlReceipt(receipt);
   if (r.formatOk === false) {
@@ -414,6 +422,12 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
     `The gate's decision, re-checked below:`;
 
   const ul = $("rv-checks"); ul.textContent = "";
+  // §12.6: say plainly whether the RECEIVED BYTES were checked, or whether
+  // this is a locally minted object with no wire document behind it. The
+  // difference is what a duplicate discriminator hides in.
+  if (!r.document_checked) {
+    ul.append(rvLine(null, "receipt document not checked: this record was minted in this page, so there are no received bytes to check for a repeated version discriminator"));
+  }
   ul.append(rvLine(r.kernelShaMatch, `kernel binary self-verified (sha256 ${r.kernelSha.slice(0, 12)}…, matches the receipt)`));
   if (r.unparseableRequest) {
     // §11.1: not a match, not a mismatch — its own state, named calmly.
@@ -477,10 +491,12 @@ async function renderVerifiedReceipt(receipt, { focus = true, note = "" } = {}) 
 }
 
 async function maybeRenderDeepLinkedReceipt() {
-  let receipt;
-  try { receipt = decodeReceiptParam(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
-  if (!receipt) return;
-  await renderVerifiedReceipt(receipt);
+  let document_;
+  try { document_ = decodeReceiptDocument(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
+  if (!document_) return;
+  // The raw text, not a parsed object: the link's own bytes are what §12.6
+  // checks for a repeated or escaped version discriminator.
+  await renderVerifiedReceipt(document_);
 }
 
 // Demo the deep-link flow without a link: build a real receipt through the

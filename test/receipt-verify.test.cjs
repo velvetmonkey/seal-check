@@ -62,6 +62,29 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   check("genuine receipt: pinned authority authorised", ok.authority_trusted === true && ok.outcome === "authorised" && ok.allGood === true,
     (ok.formatErrors || []).join("; "));
 
+  // §12.6: the shipped verifier takes the received DOCUMENT. The same receipt
+  // handed over as bytes verifies identically and reports document_checked;
+  // handed over as an object it still verifies but says the bytes were never
+  // examined. A duplicated discriminator in those bytes — invisible to the
+  // object path, since JSON.parse keeps only the last occurrence — is refused
+  // before the kernel is ever consulted.
+  const genuineDoc = K.canonicalReceiptJson(genuine);
+  const okDoc = await R.verifyReceipt(genuineDoc, { expectedConfigPubkey: cfg.PUBKEY });
+  check("genuine receipt as a DOCUMENT: same authorised outcome",
+    okDoc.outcome === "authorised" && okDoc.allGood === true, (okDoc.formatErrors || []).join("; "));
+  check("genuine receipt as a DOCUMENT: document_checked true", okDoc.document_checked === true);
+  check("genuine receipt as an OBJECT: document_checked false", ok.document_checked === false);
+  const dupDoc = genuineDoc.replace(/"seal_receipt":\s*"v2"/, '"seal_receipt": "v2", "seal_receipt": "v1"');
+  check("duplicate-discriminator document really parses to the LAST value",
+    JSON.parse(dupDoc).seal_receipt === "v1");
+  const dupOut = await R.verifyReceipt(dupDoc, { expectedConfigPubkey: cfg.PUBKEY });
+  check("duplicate discriminator in the received bytes: REFUSED",
+    dupOut.formatOk === false && dupOut.outcome === "failure" && dupOut.allGood === false);
+  check("duplicate discriminator: the duplication is named",
+    (dupOut.formatErrors || []).some((e) => e.includes('"seal_receipt" occurs 2 times')),
+    (dupOut.formatErrors || []).join("; "));
+  check("duplicate discriminator: kernel never consulted (not mediated)", dupOut.mediated === null);
+
   // Opaque grants are this box's defining property (fire-your-own-target
   // approvals are raw commitments): surfaced informationally, never gating.
   check("genuine receipt: 1 opaque grant counted", ok.opaqueGrants === 1, String(ok.opaqueGrants));
