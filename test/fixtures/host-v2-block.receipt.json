@@ -1,0 +1,137 @@
+{
+  "record_type": "seal.authorization-decision",
+  "record_version": 2,
+  "tool": "shell_exec",
+  "arguments": {
+    "command": "rm -rf /"
+  },
+  "args_hash": "2f3b94579f43fb59e8df8ecf8d8a231a288b641d262c4c425043c107e8e72b82",
+  "effect_view": {
+    "schema": "seal.effect-view/v0",
+    "source": "mcp-jsonrpc/tools-call@1",
+    "adapter": {
+      "type": "mcp-jsonrpc/tools-call",
+      "version": "1"
+    },
+    "session": "seal-host-rs/stdio:3263911:1786116415275",
+    "effect": {
+      "resource": "shell_exec",
+      "action": "call",
+      "arguments": {
+        "command": "rm -rf /"
+      }
+    },
+    "raw_preimage_sha256": "9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
+    "policy_hash": "5fccc783be81a165a67476eca7fed27f55b1320ab496ef968a59a50c8d29d1fc",
+    "idempotency_key": "seal-host-rs/stdio:3263911:1786116415275:9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
+    "policy_version": 1,
+    "policy_version_enforced": false,
+    "authoritative": false
+  },
+  "now": 1786116422240,
+  "canonical_request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"shell_exec\",\"arguments\":{\"command\":\"rm -rf /\"}}}",
+  "canonical_request_sha256": "9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
+  "request_sha256": "9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
+  "framed_subject_sha256": "012b51a20dbff499423b63e4f53d0552703679becabd5358f0f8b30556f5eb99",
+  "framed_subject_length": 113,
+  "bypass": false,
+  "verdict": "BLOCK",
+  "reason": "safety kernel: ed1ea2c2dd6bc7831fa4801024f264959cc39dcd00e4e3a530ab9b7837f9dbc2",
+  "deny_kernel": "safety",
+  "certs": [
+    {
+      "certHash": "15967791360716556519",
+      "kernel": "safety",
+      "reason": "ed1ea2c2dd6bc7831fa4801024f264959cc39dcd00e4e3a530ab9b7837f9dbc2",
+      "verdict": "deny"
+    },
+    {
+      "certHash": "12756644985251018087",
+      "kernel": "temporal",
+      "reason": "trace ok (1 events)",
+      "verdict": "allow"
+    }
+  ],
+  "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"15967791360716556519\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"ed1ea2c2dd6bc7831fa4801024f264959cc39dcd00e4e3a530ab9b7837f9dbc2\\\",\\\"verdict\\\":\\\"deny\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"request_sha256\\\":\\\"9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437\\\",\\\"tool\\\":\\\"shell_exec\\\",\\\"verdict\\\":\\\"deny\\\"}\",\"response\":\"{\\\"id\\\":1,\\\"jsonrpc\\\":\\\"2.0\\\",\\\"result\\\":{\\\"content\\\":[{\\\"text\\\":\\\"approval required: ed1ea2c2dd6bc7831fa4801024f264959cc39dcd00e4e3a530ab9b7837f9dbc2\\\",\\\"type\\\":\\\"text\\\"}],\\\"isError\\\":true}}\\n\",\"route\":\"block\"}",
+  "kernel_identity": {
+    "wasm_sha256": "0b5e792500592b56847f70b1e27e47aecdc65023c7c59fd79695102c465f26ec",
+    "self_verified": true,
+    "note": "Re-derive against this wasm; the native executor is identified separately, not proven equivalent."
+  },
+  "host_identity": {
+    "native_executable_sha256": "1c5b8fa3ae016c07569d5f369592d295082d0e8c55306d8dc0bdb54496079bfb",
+    "lean_ffi_sha256": "e03c7481491faac72d8fa4683ea361225d1122c4b63bea9fd44b793c3ca194a0",
+    "equivalence": "not_proven"
+  },
+  "asserted_provenance": {
+    "verified_in_browser": false,
+    "lean_toolchain": "leanprover/lean4:v4.28.0",
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "note": "Source-level provenance asserted by the producer; not established by this authorization decision."
+  },
+  "signed_config": {
+    "payload": "{\"epoch\":1,\"server\":\"seal-shell-demo@1.0.0\",\"safety\":{\"approval\":{\"ttl_seconds\":120,\"control_file\":\"/tmp/seal-golden-path-kryzk3yt/unused-approvals.ndjson\",\"replay_store\":{\"sqlite_path\":\"/tmp/seal-golden-path-kryzk3yt/approval-replay.sqlite\",\"schema_version\":2,\"namespace_encoding_version\":1}},\"tools\":[{\"name\":\"read_file\",\"mode\":\"allow\",\"target\":[{\"full_arguments\":true}],\"_seal_scaffold\":{\"reason\":\"readonly\"},\"_comment\":\"unverified suggestion -- server self-described readOnly\",\"_seal_demo_tier\":{\"tier\":\"dev-box deterministic-tested (local run); CI configured but not run; operator-verified: NO\",\"evidence_scope\":\"local containment, injected BLOCK, both tamper legs, downstream non-receipt, receipt verify, and scan passed\",\"proven\":\"reference kernel invariant only; integration is not universally proven\",\"ci_tested\":false,\"ci_status\":\"configured; pending base-revision and assurance-kit pushes plus the first green workflow\",\"operator_verified\":false,\"operator_status\":\"operator-untested until run by Ben\"}},{\"name\":\"shell_exec\",\"mode\":\"guard\",\"target\":[{\"full_arguments\":true}],\"_seal_scaffold\":{\"reason\":\"destructive\"}}]},\"temporal\":{\"enabled\":false,\"policies\":[]}}",
+    "signature": "211c0a00011d06d4ee0883338a4b3a964cd6e8c0843a227b1632b9f30c2f62ab56c529e5c009325cf8bad713718f03146ff05be1073fbd34c8e77bef54787d0f",
+    "pubkey": "a1c7f2c1cfe8651990f14de4a36d25380a79b6346c9332f34f9a6be053271669"
+  },
+  "kernel_config": {
+    "epoch": 1,
+    "server": "seal-shell-demo@1.0.0",
+    "safety": {
+      "approval": {
+        "ttl_seconds": 120,
+        "control_file": "/tmp/seal-golden-path-kryzk3yt/unused-approvals.ndjson",
+        "replay_store": {
+          "sqlite_path": "/tmp/seal-golden-path-kryzk3yt/approval-replay.sqlite",
+          "schema_version": 2,
+          "namespace_encoding_version": 1
+        }
+      },
+      "tools": [
+        {
+          "name": "read_file",
+          "mode": "allow",
+          "target": [
+            {
+              "full_arguments": true
+            }
+          ],
+          "_seal_scaffold": {
+            "reason": "readonly"
+          },
+          "_comment": "unverified suggestion -- server self-described readOnly",
+          "_seal_demo_tier": {
+            "tier": "dev-box deterministic-tested (local run); CI configured but not run; operator-verified: NO",
+            "evidence_scope": "local containment, injected BLOCK, both tamper legs, downstream non-receipt, receipt verify, and scan passed",
+            "proven": "reference kernel invariant only; integration is not universally proven",
+            "ci_tested": false,
+            "ci_status": "configured; pending base-revision and assurance-kit pushes plus the first green workflow",
+            "operator_verified": false,
+            "operator_status": "operator-untested until run by Ben"
+          }
+        },
+        {
+          "name": "shell_exec",
+          "mode": "guard",
+          "target": [
+            {
+              "full_arguments": true
+            }
+          ],
+          "_seal_scaffold": {
+            "reason": "destructive"
+          }
+        }
+      ]
+    },
+    "temporal": {
+      "enabled": false,
+      "policies": []
+    }
+  },
+  "granted_capabilities": []
+}

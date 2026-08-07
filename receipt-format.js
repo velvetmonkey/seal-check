@@ -17,6 +17,16 @@ export const RECEIPT_VERSION_KEY = "seal_receipt";
 export const LEGACY_VERSION_KEYS = ["seal_live_receipt", "seal_check_receipt"];
 export const VERDICTS = ["ALLOW", "BLOCK", "ERROR"];
 export const APPROVAL_CHANNELS = ["file", "interactive", "ed25519"];
+// §12 (v3) vocabularies. RELEASE_STATUSES is SCREAMING_SNAKE on the wire
+// (host ReleaseStatus); DURABILITY_CLASSES is the READABLE set — the v1 host
+// emitter can only produce asserted_local_fsync|unknown, but a verifier must
+// accept (and a future witness protocol may emit) witnessed_external.
+export const RELEASE_STATUSES = ["PENDING", "UNKNOWN", "RELEASED", "NOT_APPLICABLE"];
+export const DURABILITY_CLASSES = ["asserted_local_fsync", "witnessed_external", "unknown"];
+// §12.2 Object B signature domain. The wire `signature.domain` field carries
+// this 16-char name; the signing preimage appends one 0x00 (17 bytes total).
+// NOT the v1 optional live-demo HMAC `signature`, NOT `signed_config`.
+export const RECEIPT_SIGNATURE_DOMAIN = "seal.object-b/v1";
 // Host audit lines (seal-host/Host/Audit.lean) speak lowercase; receipts never do.
 export const HOST_AUDIT_VERDICT_MAP = { allow: "ALLOW", deny: "BLOCK" };
 
@@ -253,11 +263,19 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const HEX128 = /^[0-9a-f]{128}$/;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
-// Structural validation against the v1/v2 field tables. Returns
-// { ok, version, errors }. version: "v2" (current) | "v1" (accepted-legacy) |
-// "v0-live" (grandfathered) | "v0-check" (rejected legacy Schema K) |
-// null (unrecognized).
-export function validateReceipt(r) {
+// Structural validation against the v1/v2/v3 field tables. Returns
+// { ok, version, errors } plus, on v3, `receipt_signature_valid` (the Object B
+// Ed25519 envelope — deliberately NOT named `signature_valid`, which
+// downstream verifiers already use for the DIFFERENT `signed_config` object).
+// version: "v3"|"v2" (current) | "v1" (accepted-legacy) | "v0-live"
+// (grandfathered) | "v0-check" (rejected legacy Schema K) | null (unrecognized).
+//
+// v3 verification is cryptographic: pass opts.ed25519Verify(message,
+// signature, publicKey) -> boolean (Uint8Array args; e.g. tweetnacl's
+// nacl.sign.detached.verify). Without it a v3 receipt FAILS validation with an
+// explicit UNVERIFIED error — the module stays dependency-free and the caller
+// cannot silently skip the check.
+export function validateReceipt(r, opts = {}) {
   const errors = [];
   if (!isObj(r)) return { ok: false, version: null, errors: ["receipt is not an object"] };
   if ("authority_trusted" in r)
@@ -266,6 +284,11 @@ export function validateReceipt(r) {
   let version = null;
   if (r.seal_receipt === RECEIPT_SCHEMA_VERSION_V2) version = "v2";
   else if (r.record_type === "seal.authorization-decision" && r.record_version === 2) version = "v2";
+  // Exact equality per version, ONE branch each — never a range match
+  // (`record_version >= 2` would silently accept v4/v5, which is precisely
+  // how an unspecified version becomes invisible). An unknown record_version
+  // falls through to "no recognized version discriminator" and is refused.
+  else if (r.record_type === "seal.authorization-decision" && r.record_version === 3) version = "v3";
   else if (r.seal_receipt === RECEIPT_SCHEMA_VERSION) version = "v1";
   else if (r.seal_live_receipt === "v0") version = "v0-live";
   else if ("seal_check_receipt" in r) {
@@ -319,10 +342,10 @@ export function validateReceipt(r) {
     } else if (typeof w !== "string" || !HEX64.test(w)) {
       errors.push("kernel_identity.wasm_sha256: 64-hex string required when mediated");
     }
-    // §4 HARD SPLIT (v1 and v2; v0-live merged blocks are grandfathered):
+    // §4 HARD SPLIT (v1, v2 and v3; v0-live merged blocks are grandfathered):
     // identity is the binary hash — asserted provenance lives in its own
-    // block. A v1/v2 kernel_identity carrying toolchain/axioms is INVALID.
-    if (version === "v1" || version === "v2") {
+    // block. A v1/v2/v3 kernel_identity carrying toolchain/axioms is INVALID.
+    if (version === "v1" || version === "v2" || version === "v3") {
       for (const k of ["lean_toolchain", "axioms"]) {
         if (k in r.kernel_identity)
           errors.push(`kernel_identity.${k}: forbidden in ${version} (hard split, L0 §6.2) — move to asserted_provenance`);
@@ -339,7 +362,7 @@ export function validateReceipt(r) {
     if (r.host_identity.equivalence !== "not_proven")
       errors.push("host_identity.equivalence: must be not_proven");
   }
-  if ((version === "v1" || version === "v2") && "asserted_provenance" in r) {
+  if ((version === "v1" || version === "v2" || version === "v3") && "asserted_provenance" in r) {
     if (!isObj(r.asserted_provenance) || r.asserted_provenance.verified_in_browser === true)
       errors.push("asserted_provenance: object with verified_in_browser !== true required (asserted, never verified)");
   }
@@ -357,7 +380,13 @@ export function validateReceipt(r) {
     if (!("deny_kernel" in r)) errors.push("deny_kernel: required when mediated (string or null)");
   }
 
-  if (version === "v2") validateV2Extras(r, errors);
+  // §12: v3 is purely additive over v2 — the full v2 body obligations apply
+  // unchanged, then the release-authority extras and the Object B signature.
+  if (version === "v2" || version === "v3") validateV2Extras(r, errors);
+  if (version === "v3") {
+    const receipt_signature_valid = validateV3Extras(r, errors, opts.ed25519Verify);
+    return { ok: errors.length === 0, version, errors, receipt_signature_valid };
+  }
 
   return { ok: errors.length === 0, version, errors };
 }
@@ -462,4 +491,186 @@ function validateV2Extras(r, errors) {
       if (f in r) errors.push(`${f}: present but the config declares no payment class for ${r.tool} (fabrication)`);
     }
   }
+}
+
+// --- §12: v3 release authority + Object B signature --------------------------
+// Producer: seal-host rust/src/release.rs (attach_and_sign / ReceiptSigner).
+// v3 adds four always-present signed fields (release_status, operation_id,
+// durability_class, signature) and three ALLOW-only companions
+// (release_valid_until, post_state_hash, release_frame).
+//
+// NAME COLLISION, deliberate and documented: v1 receipts may carry an optional
+// live-demo HMAC field also called `signature` (different shape, unchecked
+// here). The discriminators are disjoint keys (v1: `seal_receipt`; v3:
+// `record_type`+`record_version`), so a v1 record can never reach this branch;
+// a record carrying BOTH discriminators classifies as v3 and its v1-shaped
+// signature fails the shape checks below. Likewise `signed_config.signature`
+// (config authority) and approval signatures are DIFFERENT objects under
+// different keys — none of them is this envelope.
+
+const SIGNATURE_KEYS_SORTED = ["algorithm", "domain", "encoding", "key_id", "public_key", "value"];
+const B64_STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const B64_URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16);
+  return out;
+}
+
+// Strict decoder for both alphabets. Standard padding is accepted on B64_STD
+// only; non-alphabet characters and non-zero trailing bits are rejected
+// (returns null — a malleable signature encoding must not verify).
+function base64Bytes(input, alphabet) {
+  if (typeof input !== "string") return null;
+  let s = input;
+  if (alphabet === B64_STD) s = s.replace(/=+$/, "");
+  if (s.length % 4 === 1) return null;
+  const out = new Uint8Array(Math.floor((s.length * 3) / 4));
+  let buf = 0, bits = 0, n = 0;
+  for (const ch of s) {
+    const v = alphabet.indexOf(ch);
+    if (v < 0) return null;
+    buf = (buf << 6) | v; bits += 6;
+    if (bits >= 8) { bits -= 8; out[n++] = (buf >> bits) & 255; }
+  }
+  if (bits && (buf & ((1 << bits) - 1))) return null;
+  return out.subarray(0, n);
+}
+
+// §12.2 preimage:  "seal.object-b/v1" || 0x00 || u64_be(len(bytes)) || bytes
+// where bytes = the compact JSON of the record with `signature` removed, in
+// the record's OWN stored key order.
+//
+// THE preserve_order CRUX: the producer serializes with serde_json's
+// preserve_order feature, so the covered bytes are in producer INSERTION
+// order, not sorted keys. Do NOT canonicalise or sort here — a sorted rebuild
+// produces a preimage that verifies nothing. JSON.parse + JSON.stringify
+// round-trips string-keyed member order faithfully; two honest limits, both
+// fail CLOSED (signature refuses, never falsely accepts): (1) JS reorders
+// integer-like member names to the front, so a producer map with such keys
+// out of that order cannot be re-serialized byte-identically; (2) numbers
+// outside the exact-double range (|n| >= 2^53, or any non-shortest float
+// spelling) lose their source bytes at JSON.parse.
+export function receiptSignaturePreimage(record) {
+  const unsigned = {};
+  for (const k of Object.keys(record)) if (k !== "signature") unsigned[k] = record[k];
+  const body = new TextEncoder().encode(JSON.stringify(unsigned));
+  const out = new Uint8Array(17 + 8 + body.length);
+  out.set(new TextEncoder().encode(RECEIPT_SIGNATURE_DOMAIN)); // 16 chars…
+  out[16] = 0; // …plus the trailing NUL: SIGNATURE_DOMAIN is 17 bytes.
+  let len = body.length;
+  for (let i = 24; i >= 17; i--) { out[i] = len % 256; len = Math.floor(len / 256); }
+  out.set(body, 25);
+  return out;
+}
+
+// §12.1 operation-state bind: sha256 of the exact compact serde_json bytes
+// {"operation_id":…,"release_frame_sha256":…} (this insertion order).
+export function postStateHash(operationId, frameSha256) {
+  return sha256Hex(new TextEncoder().encode(
+    `{"operation_id":${JSON.stringify(operationId)},"release_frame_sha256":${JSON.stringify(frameSha256)}}`));
+}
+
+// Shape + cryptographic check of the Object B envelope. Returns
+// { receipt_signature_valid, errors }. receipt_signature_valid is true ONLY
+// when the shape is exact AND the Ed25519 primitive ran and accepted; an
+// absent signature, a malformed envelope, or a missing primitive all fail.
+// Trust caveat (§12.4): a passing check binds the record to the EMBEDDED
+// public key; binding that key to a deployment needs an out-of-band pin.
+export function verifyReceiptSignature(record, ed25519Verify) {
+  const errors = [];
+  const s = isObj(record) ? record.signature : undefined;
+  if (!isObj(s)) {
+    return { receipt_signature_valid: false,
+      errors: ["signature: Object B envelope required on every v3 receipt (absent means invalid, not optional)"] };
+  }
+  if (JSON.stringify(Object.keys(s).sort()) !== JSON.stringify(SIGNATURE_KEYS_SORTED))
+    errors.push("signature: exactly the members domain,algorithm,public_key,key_id,encoding,value required");
+  if (s.domain !== RECEIPT_SIGNATURE_DOMAIN)
+    errors.push(`signature.domain: must be ${RECEIPT_SIGNATURE_DOMAIN}`);
+  if (s.algorithm !== "Ed25519") errors.push("signature.algorithm: must be Ed25519");
+  if (s.encoding !== "base64url-nopad") errors.push("signature.encoding: must be base64url-nopad");
+  if (typeof s.public_key !== "string" || !HEX64.test(s.public_key))
+    errors.push("signature.public_key: 64-hex Ed25519 public key required");
+  if (typeof s.key_id !== "string" || !HEX64.test(s.key_id))
+    errors.push("signature.key_id: 64-hex string required");
+  const sigBytes = base64Bytes(s.value, B64_URL);
+  if (sigBytes === null || sigBytes.length !== 64)
+    errors.push("signature.value: base64url-nopad of a 64-byte Ed25519 signature required");
+  if (errors.length === 0) {
+    const pub = hexToBytes(s.public_key);
+    if (s.key_id !== sha256Hex(pub)) {
+      errors.push("signature.key_id: does not equal sha256 of the public key bytes");
+    } else if (typeof ed25519Verify !== "function") {
+      errors.push("signature: UNVERIFIED — v3 validation requires an Ed25519 primitive; pass opts.ed25519Verify(message, signature, publicKey) (fail closed, never skipped)");
+    } else if (ed25519Verify(receiptSignaturePreimage(record), sigBytes, pub) !== true) {
+      errors.push("signature.value: Ed25519 verification failed over the seal.object-b/v1 preimage (record was mutated after signing, or signed by other bytes)");
+    }
+  }
+  return { receipt_signature_valid: errors.length === 0, errors };
+}
+
+// §12 checks beyond the v2 body. Returns receipt_signature_valid.
+function validateV3Extras(r, errors, ed25519Verify) {
+  if (!RELEASE_STATUSES.includes(r.release_status))
+    errors.push(`release_status: one of ${RELEASE_STATUSES.join("|")} required (v3)`);
+  if (typeof r.operation_id !== "string" || !HEX64.test(r.operation_id))
+    errors.push("operation_id: 64-hex string (32 random bytes) required (v3)");
+  if (!DURABILITY_CLASSES.includes(r.durability_class))
+    errors.push(`durability_class: one of ${DURABILITY_CLASSES.join("|")} required (v3)`);
+
+  if (r.verdict === "ALLOW") {
+    // Release authority: the exact frame the host may forward, bound to the
+    // signed operation_id and to the operation-state burn entry.
+    if (r.release_status === "NOT_APPLICABLE")
+      errors.push("release_status: must not be NOT_APPLICABLE on ALLOW (PENDING|UNKNOWN|RELEASED)");
+    if (!Number.isInteger(r.release_valid_until) || r.release_valid_until < 0)
+      errors.push("release_valid_until: non-negative integer (epoch ms) required on ALLOW (v3)");
+    const pshOk = typeof r.post_state_hash === "string" && HEX64.test(r.post_state_hash);
+    if (!pshOk) errors.push("post_state_hash: 64-hex string required on ALLOW (v3)");
+    const f = r.release_frame;
+    if (!isObj(f)) {
+      errors.push("release_frame: object required on ALLOW (v3)");
+    } else {
+      if (f.encoding !== "base64") errors.push("release_frame.encoding: must be base64");
+      if (!Number.isInteger(f.length) || f.length < 0)
+        errors.push("release_frame.length: non-negative integer required");
+      if (typeof f.sha256 !== "string" || !HEX64.test(f.sha256))
+        errors.push("release_frame.sha256: 64-hex string required");
+      const frame = base64Bytes(f.base64, B64_STD);
+      if (frame === null) {
+        errors.push("release_frame.base64: base64 string required");
+      } else {
+        if (frame.length !== f.length)
+          errors.push("release_frame.length: does not equal the decoded frame length");
+        const frameSha = sha256Hex(frame);
+        if (typeof f.sha256 === "string" && HEX64.test(f.sha256) && frameSha !== f.sha256)
+          errors.push("release_frame.sha256: does not equal sha256 of the decoded frame bytes");
+        // Producer strips one trailing \r\n or \n before parsing the body.
+        let end = frame.length;
+        if (end >= 2 && frame[end - 2] === 13 && frame[end - 1] === 10) end -= 2;
+        else if (end >= 1 && frame[end - 1] === 10) end -= 1;
+        let frameJson;
+        try { frameJson = JSON.parse(new TextDecoder().decode(frame.subarray(0, end))); }
+        catch { errors.push("release_frame: decoded frame is not a JSON object"); }
+        if (frameJson !== undefined &&
+            (!isObj(frameJson) || frameJson.operation_id !== r.operation_id))
+          errors.push("release_frame: frame operation_id does not equal the signed top-level operation_id (the id must be forwarded unchanged)");
+        if (pshOk && typeof r.operation_id === "string" &&
+            r.post_state_hash !== postStateHash(r.operation_id, frameSha))
+          errors.push("post_state_hash: does not equal sha256 of the {operation_id, release_frame_sha256} operation state (bind broken)");
+      }
+    }
+  } else {
+    if (RELEASE_STATUSES.includes(r.release_status) && r.release_status !== "NOT_APPLICABLE")
+      errors.push("release_status: must be NOT_APPLICABLE on a non-ALLOW receipt");
+    for (const k of ["release_valid_until", "post_state_hash", "release_frame"]) {
+      if (k in r) errors.push(`${k}: ALLOW-only release authority; must be absent on a non-ALLOW receipt (v3)`);
+    }
+  }
+
+  const sig = verifyReceiptSignature(r, ed25519Verify);
+  errors.push(...sig.errors);
+  return sig.receipt_signature_valid;
 }
