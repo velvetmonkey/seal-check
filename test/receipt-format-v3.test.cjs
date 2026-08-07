@@ -111,6 +111,60 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     JSON.stringify([r.ok, r.version, r.errors]),
     JSON.stringify([false, null, ["no recognized version discriminator"]]));
 
+  // ---- CONTROL 8: dual discriminators are MALFORMED (downgrade forgery) -----
+  // Frisk Q1.12/Q1.12b/Q1.12c: `seal_receipt: "v2"` on a v3 body used to win
+  // classification and skip Object B verification entirely. Any pairing of
+  // two discriminator families must refuse BEFORE classification, naming the
+  // conflict — never resolved by priority order.
+  const conflictNamed = (res) =>
+    res.ok === false && res.version === null &&
+    res.errors.length === 1 && res.errors[0].includes("conflicting version discriminators");
+
+  // Q1.12: dual-disc, signature still present.
+  t = clone(hostV3); t.seal_receipt = "v2";
+  check("C8 v3 + seal_receipt:v2 (signed) refused as conflicting", conflictNamed(V(t)), true);
+
+  // Q1.12b: the DO NOT MERGE exhibit — signature stripped, verdict forged to
+  // ALLOW, authorization/approval/granted_capabilities fabricated.
+  t = clone(hostV3);
+  t.seal_receipt = "v2";
+  delete t.signature;
+  t.verdict = "ALLOW";
+  t.reason = "forged allow via dual-disc downgrade";
+  t.deny_kernel = null;
+  t.authorization = "approval";
+  t.approval = { approval_identity: { channel: "file" },
+    policy_hash: F.canonicalJsonSha256(t.kernel_config) };
+  t.granted_capabilities = [{ target: "ab".repeat(32) }];
+  check("C8 forged-ALLOW downgrade (Q1.12b) refused as conflicting", conflictNamed(V(t)), true);
+  check("C8 …and refused even with an always-false oracle (crypto not the gate)",
+    conflictNamed(F.validateReceipt(t, { ed25519Verify: () => false })), true);
+
+  // Q1.12c: dual-disc with only the signature deleted.
+  t = clone(hostV3); t.seal_receipt = "v2"; delete t.signature;
+  check("C8 signature-less dual-disc (Q1.12c) refused as conflicting", conflictNamed(V(t)), true);
+
+  // Every other family pairing refuses the same way — the rule is generic,
+  // not a patch for the one construction the frisk built.
+  t = clone(hostV3); t.seal_receipt = "v1";
+  check("C8 v3 + seal_receipt:v1 refused as conflicting", conflictNamed(V(t)), true);
+  t = clone(hostV3); t.seal_live_receipt = "v0";
+  check("C8 v3 + seal_live_receipt:v0 refused as conflicting", conflictNamed(V(t)), true);
+  t = clone(hostV3); t.seal_check_receipt = "K";
+  check("C8 v3 + seal_check_receipt refused as conflicting", conflictNamed(V(t)), true);
+  t = clone(hostV2); t.seal_receipt = "v2";
+  check("C8 host v2 + seal_receipt:v2 refused (same version, two families, still ambiguous)",
+    conflictNamed(F.validateReceipt(t)), true);
+  // Unknown values still count as a family claim — presence is the signal.
+  t = clone(hostV3); t.seal_receipt = "v9";
+  check("C8 v3 + unrecognized seal_receipt value refused as conflicting", conflictNamed(V(t)), true);
+  // JS-only quirk: a key spread in as undefined is NOT wire-present and must
+  // not trip the conflict rule (JSON.parse never yields undefined).
+  t = clone(hostV3); t.seal_receipt = undefined;
+  r = V(t);
+  check("C8 seal_receipt:undefined (JS-only, not wire) does not conflict",
+    JSON.stringify([r.ok, r.version]), JSON.stringify([true, "v3"]));
+
   // ---- fail closed without a primitive --------------------------------------
   r = F.validateReceipt(clone(hostV3)); // no opts.ed25519Verify
   check("v3 without an Ed25519 primitive FAILS (verification cannot be skipped)", r.ok, false);

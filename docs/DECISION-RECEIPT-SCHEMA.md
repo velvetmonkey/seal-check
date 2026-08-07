@@ -333,6 +333,19 @@ Exact equality per version, one branch each. A verifier MUST NOT range-match
 that made v3 invisible). Unknown versions are refused with
 `no recognized version discriminator`.
 
+**Dual discriminators are MALFORMED.** A version is claimed through exactly
+one of four discriminator key families — six recognized version claims in
+total: `seal_receipt: "v1"`, `seal_receipt: "v2"`,
+`record_type`+`record_version: 2`, `record_type`+`record_version: 3`,
+`seal_live_receipt: "v0"`, and `seal_check_receipt` (legacy Schema K, always
+refused). A record presenting keys from more than one family MUST be refused
+before classification with `conflicting version discriminators: …` — it is
+not any version; it is a document trying to be classified favourably.
+Otherwise a signed v3 body with `seal_receipt: "v2"` bolted on classifies as
+v2 and the Object B signature check never runs (a downgrade forgery). A
+verifier MUST NOT resolve the conflict by priority order — preferring the
+highest version present merely converts the downgrade into an upgrade attack.
+
 v3 is **purely additive over v2**: every v2 obligation applies unchanged;
 nothing is removed and no v2 field changes meaning.
 
@@ -420,8 +433,8 @@ deliberately NOT `signature_valid`: downstream verifiers already use
 `signature_valid` for the **`signed_config`** Ed25519 envelope, a different
 object under a different key. The third collision is v1's optional live-demo
 HMAC field also named `signature` — a different shape that can never reach
-the v3 branch (disjoint discriminators; a record carrying both classifies as
-v3 and the v1 shape is refused).
+the v3 branch (disjoint discriminators; a record carrying both families is
+refused as malformed under the §12.0 dual-discriminator rule).
 
 **Trust caveat:** `receipt_signature_valid: true` binds the record to the
 *embedded* public key. Binding that key to a deployment requires an

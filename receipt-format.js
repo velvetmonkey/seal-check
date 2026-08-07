@@ -281,6 +281,33 @@ export function validateReceipt(r, opts = {}) {
   if ("authority_trusted" in r)
     errors.push("authority_trusted: verifier-computed only; forbidden in a receipt");
 
+  // A version is claimed through exactly ONE of four discriminator key
+  // families — six recognized version claims in total:
+  //   1. seal_receipt                  ("v1" | "v2" — fleet JS producers)
+  //   2. record_type + record_version  (host records: 2 → v2, 3 → v3)
+  //   3. seal_live_receipt             ("v0" — grandfathered live demo)
+  //   4. seal_check_receipt            (legacy Schema K, always refused)
+  // A record presenting keys from MORE THAN ONE family is MALFORMED and is
+  // refused before any classification: it is not a v2 record and not a v3
+  // record; it is a document trying to be classified favourably. Concretely,
+  // a signed v3 body with `seal_receipt: "v2"` bolted on would otherwise win
+  // the v2 branch and skip Object B signature verification entirely — a
+  // downgrade that turns `ok: true` into a forgery vector. No priority order
+  // among the families is safe: preferring the highest version present merely
+  // converts the downgrade into an upgrade attack. Fail closed instead.
+  // "Present" = the key exists with a non-undefined value; JSON.parse never
+  // yields undefined, so wire records are judged on key presence alone.
+  const discFamilies = [];
+  if (r.seal_receipt !== undefined) discFamilies.push("seal_receipt");
+  if (r.record_type !== undefined || r.record_version !== undefined)
+    discFamilies.push("record_type/record_version");
+  if (r.seal_live_receipt !== undefined) discFamilies.push("seal_live_receipt");
+  if (r.seal_check_receipt !== undefined) discFamilies.push("seal_check_receipt");
+  if (discFamilies.length > 1) {
+    return { ok: false, version: null,
+      errors: [`conflicting version discriminators: ${discFamilies.join(" + ")} — a record claiming more than one schema version is malformed and refused (fail closed, §12.0)`] };
+  }
+
   let version = null;
   if (r.seal_receipt === RECEIPT_SCHEMA_VERSION_V2) version = "v2";
   else if (r.record_type === "seal.authorization-decision" && r.record_version === 2) version = "v2";
@@ -503,8 +530,10 @@ function validateV2Extras(r, errors) {
 // live-demo HMAC field also called `signature` (different shape, unchecked
 // here). The discriminators are disjoint keys (v1: `seal_receipt`; v3:
 // `record_type`+`record_version`), so a v1 record can never reach this branch;
-// a record carrying BOTH discriminators classifies as v3 and its v1-shaped
-// signature fails the shape checks below. Likewise `signed_config.signature`
+// a record carrying BOTH discriminator families is refused as MALFORMED by
+// the dual-discriminator rule in validateReceipt (it never classifies at
+// all, so it can neither downgrade to v2 nor reach this branch). Likewise
+// `signed_config.signature`
 // (config authority) and approval signatures are DIFFERENT objects under
 // different keys — none of them is this envelope.
 
