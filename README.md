@@ -35,9 +35,10 @@ A genuine ALLOW receipt is shipped at [`examples/allow.receipt.json`](examples/a
 Now tamper with it: change `"verdict": "ALLOW"` to `"verdict": "BLOCK"` and re-paste. It FAILS — the kernel re-derives `ALLOW` from the receipt's own call and config, so the flipped verdict no longer matches (`verdictMatch: false`, `allGood: false`). No server, no account, no taking our word for it. Verified on this machine:
 
 ```
-verifyReceipt(genuine).outcome = "unpinned"   allGood = false
-verifyReceipt(genuine, { expectedConfigPubkey }).outcome = "authorised"   allGood = true
-verifyReceipt(tampered).allGood = false   verdictMatch = false
+verifyReceipt(genuineText).outcome = "unpinned"   allGood = false
+verifyReceipt(genuineText, { expectedConfigPubkey }).outcome = "authorised"   allGood = true
+verifyReceipt(tamperedText).allGood = false   verdictMatch = false
+verifyReceipt(JSON.parse(genuineText)).outcome = "unverified-document"   // an already-parsed object never verifies a wire claim (§12.6)
 ```
 
 The full artifact carries the exact `signed_config`, `kernel_config`, `certs`, and hashes the verifier re-derives, so paste the complete [`examples/allow.receipt.json`](examples/allow.receipt.json) rather than a snippet — a partial receipt is meant to fail shape validation.
@@ -108,6 +109,8 @@ node test/receipt-format.test.cjs
 node test/receipt-harness.cjs
 node test/cross-receipt.test.cjs
 node test/receipt-verify.test.cjs   # negative paths: tampered receipts must FAIL
+node test/receipt-format-v3.test.cjs # v3 record_version 3 + Object B signature
+node test/receipt-document.test.cjs  # §12.6: the received bytes, not just the parsed object
 ```
 
 ## The Seal family

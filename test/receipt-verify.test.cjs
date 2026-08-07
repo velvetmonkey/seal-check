@@ -55,12 +55,40 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   const unpinned = await R.verifyReceipt(clone());
   check("genuine receipt: signature valid", unpinned.signature_valid === true, unpinned.rederiveError || "");
   check("genuine receipt: replay consistent", unpinned.kernel_replay_consistent === true);
-  check("genuine receipt: unpinned is not allGood", unpinned.outcome === "unpinned" && unpinned.allGood === false);
+  check("genuine receipt as an OBJECT: ceiling is unverified-document, never unpinned",
+    unpinned.outcome === "unverified-document" && unpinned.allGood === false && unpinned.verificationCore === false);
   check("genuine receipt: freshness carried, rollback deferred",
     unpinned.config_freshness?.value === 1 && unpinned.config_freshness.rollback_enforced === false);
   const ok = await R.verifyReceipt(clone(), { expectedConfigPubkey: cfg.PUBKEY });
-  check("genuine receipt: pinned authority authorised", ok.authority_trusted === true && ok.outcome === "authorised" && ok.allGood === true,
-    (ok.formatErrors || []).join("; "));
+  check("genuine receipt as an OBJECT with pin: still unverified-document, never authorised",
+    ok.authority_trusted === true && ok.outcome === "unverified-document" && ok.allGood === false && ok.verificationCore === false,
+    (ok.formatErrors || []).join("; ") || ok.outcome);
+
+  // §12.6: the shipped verifier takes the received DOCUMENT. The same receipt
+  // handed over as bytes verifies identically and reports document_checked;
+  // handed over as an object it still verifies but says the bytes were never
+  // examined. A duplicated discriminator in those bytes — invisible to the
+  // object path, since JSON.parse keeps only the last occurrence — is refused
+  // before the kernel is ever consulted.
+  const genuineDoc = K.canonicalReceiptJson(genuine);
+  const okDoc = await R.verifyReceipt(genuineDoc, { expectedConfigPubkey: cfg.PUBKEY });
+  check("genuine receipt as a DOCUMENT: same authorised outcome",
+    okDoc.outcome === "authorised" && okDoc.allGood === true, (okDoc.formatErrors || []).join("; "));
+  check("genuine receipt as a DOCUMENT: document_checked true", okDoc.document_checked === true);
+  check("genuine receipt as an OBJECT: document_checked false", ok.document_checked === false);
+  const unpinnedDoc = await R.verifyReceipt(genuineDoc);
+  check("genuine receipt as a DOCUMENT without pin: unpinned (the wire states are document-only)",
+    unpinnedDoc.outcome === "unpinned" && unpinnedDoc.allGood === false);
+  const dupDoc = genuineDoc.replace(/"seal_receipt":\s*"v2"/, '"seal_receipt": "v2", "seal_receipt": "v1"');
+  check("duplicate-discriminator document really parses to the LAST value",
+    JSON.parse(dupDoc).seal_receipt === "v1");
+  const dupOut = await R.verifyReceipt(dupDoc, { expectedConfigPubkey: cfg.PUBKEY });
+  check("duplicate discriminator in the received bytes: REFUSED",
+    dupOut.formatOk === false && dupOut.outcome === "failure" && dupOut.allGood === false);
+  check("duplicate discriminator: the duplication is named",
+    (dupOut.formatErrors || []).some((e) => e.includes('"seal_receipt" occurs 2 times')),
+    (dupOut.formatErrors || []).join("; "));
+  check("duplicate discriminator: kernel never consulted (not mediated)", dupOut.mediated === null);
 
   // Opaque grants are this box's defining property (fire-your-own-target
   // approvals are raw commitments): surfaced informationally, never gating.
@@ -70,9 +98,11 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   // A no-grant receipt (BLOCK, empty approvals) carries nothing opaque.
   const cleanCall = { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [], now: 1000 };
   const cleanRes = await K.decideRaw(cfg.CFG_STANDARD, cleanCall);
-  const cleanReceipt = JSON.parse(K.canonicalReceiptJson(
-    K.buildReceipt({ call: cleanCall, config: cfg.CFG_STANDARD, parsed: cleanRes.parsed, raw: cleanRes.raw, sha, signedConfig: cleanRes.signedConfig })));
-  const rClean = await R.verifyReceipt(cleanReceipt, { expectedConfigPubkey: cfg.PUBKEY });
+  const cleanDoc = K.canonicalReceiptJson(
+    K.buildReceipt({ call: cleanCall, config: cfg.CFG_STANDARD, parsed: cleanRes.parsed, raw: cleanRes.raw, sha, signedConfig: cleanRes.signedConfig }));
+  const cleanReceipt = JSON.parse(cleanDoc);
+  // §12.6: allGood is reachable only on the document path, so hand over bytes.
+  const rClean = await R.verifyReceipt(cleanDoc, { expectedConfigPubkey: cfg.PUBKEY });
   check("no-grant receipt: verdict BLOCK", cleanReceipt.verdict === "BLOCK");
   check("no-grant receipt: allGood", rClean.allGood === true, (rClean.formatErrors || []).join("; "));
   check("no-grant receipt: opaqueGrants 0", rClean.opaqueGrants === 0, String(rClean.opaqueGrants));
@@ -116,7 +146,7 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   withHostIdentity.host_identity = {
     native_executable_sha256: "a".repeat(64), lean_ffi_sha256: "b".repeat(64), equivalence: "not_proven",
   };
-  const rHost = await R.verifyReceipt(withHostIdentity, { expectedConfigPubkey: cfg.PUBKEY });
+  const rHost = await R.verifyReceipt(K.canonicalReceiptJson(withHostIdentity), { expectedConfigPubkey: cfg.PUBKEY });
   check("valid-hex host_identity remains asserted/unbound", rHost.outcome === "authorised");
   withHostIdentity.host_identity.native_executable_sha256 = "nothex";
   const rBadHost = await R.verifyReceipt(withHostIdentity, { expectedConfigPubkey: cfg.PUBKEY });
@@ -213,12 +243,14 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   // The verifier must report a DISTINCT reduced-scope state —
   // never requestHashMatch:true (the undefined === undefined false PASS this
   // test exists to prevent), and never a bare AUTHORISED.
-  const unp = JSON.parse(fs.readFileSync(
-    path.join(__dirname, "fixtures", "unparseable-block.receipt.json"), "utf8"));
+  const unpText = fs.readFileSync(
+    path.join(__dirname, "fixtures", "unparseable-block.receipt.json"), "utf8");
+  const unp = JSON.parse(unpText);
   const cloneUnp = () => JSON.parse(JSON.stringify(unp));
   check("unparseable: callSummary names the raw-line state (never 'undefined')",
     R.callSummary(unp).unparseable === true && typeof R.callSummary(unp).rawLineShort === "string");
-  const u = await R.verifyReceipt(cloneUnp(), { expectedConfigPubkey: cfg.PUBKEY });
+  // §12.6: the fixture is a FILE — received bytes exist, so hand them over.
+  const u = await R.verifyReceipt(unpText, { expectedConfigPubkey: cfg.PUBKEY });
   check("unparseable: format ok", u.formatOk === true, (u.formatErrors || []).join("; "));
   check("unparseable: requestHashMatch is null — its own state, NOT a false match",
     u.requestHashMatch === null);
@@ -230,8 +262,14 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
     u.kernelMaterialConsistent === true);
   check("unparseable: outcome authorised-unparseable, never bare authorised",
     u.outcome === "authorised-unparseable" && u.allGood === false, u.outcome);
-  const uUnpinned = await R.verifyReceipt(cloneUnp());
+  const uUnpinned = await R.verifyReceipt(unpText);
   check("unparseable: without pin stays unpinned", uUnpinned.outcome === "unpinned");
+  // §12.6: the SAME receipt handed over as an already-parsed object cannot
+  // claim the reduced-scope wire state — its ceiling is unverified-document.
+  const uObj = await R.verifyReceipt(cloneUnp(), { expectedConfigPubkey: cfg.PUBKEY });
+  check("unparseable as an OBJECT: ceiling unverified-document, never authorised-unparseable",
+    uObj.outcome === "unverified-document" && uObj.allGood === false && uObj.verificationCore === false,
+    uObj.outcome);
   const uTampered = cloneUnp();
   uTampered.verdict = "ALLOW"; // audit says deny — material no longer self-consistent
   const ut = await R.verifyReceipt(uTampered, { expectedConfigPubkey: cfg.PUBKEY });

@@ -18,11 +18,13 @@ import {
 // docs/VERIFY-PROFILES.md): P-ENFORCE — the production receipt gate.
 // signed_config binding is required, the top verdict requires the
 // trust-anchor pin (`expectedConfigPubkey`), and the outcome set
-// {authorised, authorised-unparseable, unpinned, failure} maps to the CLI's
-// 0/4/3/1 exits and the browser's four states (the browser deployment is
-// unpinned, so its ceiling is UNPINNED — ENF-4). The fleet differentials key
-// their expected agreement/divergence off this declaration; changing it is a
-// design decision, not a refactor.
+// {authorised, authorised-unparseable, unpinned, unverified-document,
+// failure} maps to the CLI's 0/4/3/-/1 exits and the browser's states (the
+// browser deployment is unpinned, so its ceiling is UNPINNED — ENF-4;
+// `unverified-document` is object-path only and never reaches the CLI, which
+// always verifies file bytes). The fleet differentials key their expected
+// agreement/divergence off this declaration; changing it is a design
+// decision, not a refactor.
 export const VERIFY_PROFILE = "P-ENFORCE";
 
 // §11.1 helpers for unparseable-request receipts -----------------------------
@@ -100,18 +102,50 @@ export function callSummary(receipt) {
   return { demo: false, tool, argsJson };
 }
 
-// Read #receipt=<base64url> from the URL fragment. Returns the receipt object or null.
-export function decodeReceiptParam() {
+// Read #receipt=<base64url> from the URL fragment. Returns the receipt
+// DOCUMENT — the raw JSON text exactly as it was carried — or null.
+// §12.6: this is what a verifier must hand to validateReceipt/verifyReceipt.
+// Parsing here and passing the object on would throw away the duplicate
+// members, escaped key spellings, and numeric spellings that decide which
+// version claim the document actually makes.
+export function decodeReceiptDocument() {
   const params = new URLSearchParams(location.hash.slice(1));
   const enc = params.get("receipt");
   if (!enc) return null;
-  return JSON.parse(b64urlToStr(enc));
+  return b64urlToStr(enc);
+}
+
+// Parsed-object form of the same link. Kept for callers that only want to READ
+// the fields; it is document-blind and must not be used as the input to
+// verification (see decodeReceiptDocument).
+export function decodeReceiptParam() {
+  const text = decodeReceiptDocument();
+  return text === null ? null : JSON.parse(text);
 }
 
 // Independently verify a receipt. Returns { formatOk, kernelShaMatch,
 // requestHashMatch, rederived, verdictMatch, mediated, allGood, ... } — every
 // field recomputed locally per the spec's §7 verifier obligations.
-export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
+// §12.6 CONTRACT: `input` is EITHER the raw received document text (a string)
+// — required for anything that arrived from a link, a file, or a peer — or an
+// object this process minted itself. Only the text form can be checked for the
+// wire ambiguities `JSON.parse` collapses (duplicate discriminator members
+// above all), and only it comes back with `document_checked: true`.
+// The contract is carried by the TYPE of the result, not by that flag: an
+// object input can never produce outcome authorised / authorised-unparseable /
+// unpinned, never verificationCore: true, never allGood: true. Its ceiling is
+// the distinct outcome `unverified-document`. A consumer that keys on any of
+// those three fields — and every shipped consumer does — is therefore unable
+// to mistake an object-path result for a verified wire receipt even if it
+// never reads document_checked.
+export async function verifyReceipt(input, { expectedConfigPubkey } = {}) {
+  // 0. Shape first: document-level ambiguity, version discriminator, field
+  //    table, hard-split rule, stored-line-vs-derived-line equality. A
+  //    malformed receipt never reaches the kernel.
+  const fromDocument = typeof input === "string";
+  const shape = validateReceipt(input);
+  const receipt = fromDocument ? (shape.record ?? null) : input;
+
   const out = {
     receipt,
     signature_valid: false,
@@ -121,12 +155,9 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
     outcome: "failure",
     allGood: false,
     bindingErrors: [],
+    document_checked: shape.document_checked === true,
   };
 
-  // 0. Shape first: version discriminator, field table, hard-split rule,
-  //    stored-line-vs-derived-line equality. A malformed receipt never
-  //    reaches the kernel.
-  const shape = validateReceipt(receipt);
   out.formatOk = shape.ok;
   out.formatVersion = shape.version;
   out.formatErrors = shape.errors;
@@ -286,16 +317,28 @@ export async function verifyReceipt(receipt, { expectedConfigPubkey } = {}) {
   // Reduced-scope core for unparseable-request receipts: everything the
   // receipt carries is verified; what it honestly cannot carry (canonical
   // request re-derivation, kernel replay) is excluded rather than failed.
-  const verificationCore = out.unparseableRequest
+  const checksPassed = out.unparseableRequest
     ? out.formatOk && out.kernelShaMatch && out.bindingOk &&
       out.grantErrors.length === 0 && out.signature_valid &&
       out.kernelMaterialConsistent === true && out.kernelRequestBinding === true
     : out.formatOk && out.kernelShaMatch && out.requestHashMatch &&
       out.bindingOk && out.grantErrors.length === 0 && out.signature_valid &&
       out.kernel_replay_consistent && out.kernelRequestBinding === true;
-  out.verificationCore = verificationCore;
-  out.outcome = !verificationCore || out.authority_trusted === false
+  // §12.6: the received document is part of what "verified" means. A record
+  // handed over as an already-parsed object had no bytes examined, so the
+  // result CANNOT read as a verified wire receipt no matter which field a
+  // consumer keys on: verificationCore and allGood are structurally false,
+  // and outcome is the distinct terminal state `unverified-document` — never
+  // authorised, never authorised-unparseable, never unpinned. This is the
+  // same discipline as §11.1's authorised-unparseable: a smaller verification
+  // scope is its own named state, not a pass and not a failure. Records this
+  // process minted are exactly as usable as before — every per-check field
+  // (signature_valid, kernel_replay_consistent, authority_trusted, ...) is
+  // still computed — but only the document path can say "verified".
+  out.verificationCore = out.document_checked && checksPassed;
+  out.outcome = !checksPassed || out.authority_trusted === false
     ? "failure"
+    : !out.document_checked ? "unverified-document"
     : out.authority_trusted !== true ? "unpinned"
     : out.unparseableRequest ? "authorised-unparseable" : "authorised";
   out.allGood = out.outcome === "authorised";

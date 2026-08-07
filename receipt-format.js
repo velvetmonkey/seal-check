@@ -17,6 +17,16 @@ export const RECEIPT_VERSION_KEY = "seal_receipt";
 export const LEGACY_VERSION_KEYS = ["seal_live_receipt", "seal_check_receipt"];
 export const VERDICTS = ["ALLOW", "BLOCK", "ERROR"];
 export const APPROVAL_CHANNELS = ["file", "interactive", "ed25519"];
+// §12 (v3) vocabularies. RELEASE_STATUSES is SCREAMING_SNAKE on the wire
+// (host ReleaseStatus); DURABILITY_CLASSES is the READABLE set — the v1 host
+// emitter can only produce asserted_local_fsync|unknown, but a verifier must
+// accept (and a future witness protocol may emit) witnessed_external.
+export const RELEASE_STATUSES = ["PENDING", "UNKNOWN", "RELEASED", "NOT_APPLICABLE"];
+export const DURABILITY_CLASSES = ["asserted_local_fsync", "witnessed_external", "unknown"];
+// §12.2 Object B signature domain. The wire `signature.domain` field carries
+// this 16-char name; the signing preimage appends one 0x00 (17 bytes total).
+// NOT the v1 optional live-demo HMAC `signature`, NOT `signed_config`.
+export const RECEIPT_SIGNATURE_DOMAIN = "seal.object-b/v1";
 // Host audit lines (seal-host/Host/Audit.lean) speak lowercase; receipts never do.
 export const HOST_AUDIT_VERDICT_MAP = { allow: "ALLOW", deny: "BLOCK" };
 
@@ -253,19 +263,293 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const HEX128 = /^[0-9a-f]{128}$/;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
-// Structural validation against the v1/v2 field tables. Returns
-// { ok, version, errors }. version: "v2" (current) | "v1" (accepted-legacy) |
-// "v0-live" (grandfathered) | "v0-check" (rejected legacy Schema K) |
-// null (unrecognized).
-export function validateReceipt(r) {
+// --- §12.6: the received DOCUMENT, not only the parsed object ------------------
+// A receipt is a byte string somebody signed. `JSON.parse` is LOSSY about that
+// byte string: a repeated member collapses to its last occurrence, `3.0` and
+// `3` fold to the same double, and `"record_version"` and
+// `"record_version"` become the same key. Validating only the parsed object
+// therefore lets an attacker choose which of two documents we believe we
+// received: a real signed v3 record whose TEXT carries both
+// `"record_version": 3` and `"record_version": 2` parses to a v2 object,
+// classifies as v2, never runs the Object B signature check, and comes back
+// `ok: true` — with no conflicting families for the §12.0 rule to see, because
+// after the parse the object genuinely claims one version. The lie is in the
+// bytes, so the bytes are what has to be checked.
+//
+// The five key names that decide which schema (and therefore which crypto) a
+// record is judged under. Repetition or an escaped spelling of ANY of these in
+// the received text is fatal.
+export const DISCRIMINATOR_KEYS = [
+  "seal_receipt", "record_type", "record_version", "seal_live_receipt", "seal_check_receipt",
+];
+
+// A structure-aware JSON reader. NOT a regex over the text: a string that
+// looks like `"record_version"` can legitimately appear inside a VALUE (a
+// reason string, an emitted_bytes blob), and counting textual occurrences
+// would refuse honest receipts. This walks the grammar and reports only what
+// is genuinely a member NAME of the top-level object. It builds no values —
+// the authoritative parse is still `JSON.parse` on the same untouched bytes;
+// nothing here canonicalises, re-serialises, or otherwise disturbs the
+// preimage the signature covers.
+//
+// One honest divergence from `JSON.parse`, and it fails CLOSED: the reader
+// recurses, so a document nested deeper than roughly 10^4 levels exhausts the
+// JS stack and is refused as not-well-formed where `JSON.parse` (iterative)
+// would accept it. Real receipts nest ~5 deep.
+const JSON_ESCAPES = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+const CANONICAL_UINT = /^(0|[1-9][0-9]*)$/;
+
+// Returns { ok, errors, topLevel } where topLevel is a Map of decoded member
+// name -> { count, escaped, numberLiterals }, or null when the document's root
+// is not an object. Structural failures are reported, never thrown.
+export function scanReceiptDocument(text) {
+  const errors = [];
+  if (typeof text !== "string")
+    return { ok: false, errors: ["document: raw receipt text (a string) required"], topLevel: null };
+  if (text.charCodeAt(0) === 0xfeff)
+    return { ok: false, errors: ["document: begins with a byte-order mark — a BOM is not JSON and must not be stripped by a verifier (fail closed, §12.6)"], topLevel: null };
+
+  let i = 0;
+  let topLevel = null;
+  const fail = (msg) => { throw new SyntaxError(`${msg} at offset ${i}`); };
+  const ws = () => {
+    while (i < text.length) {
+      const c = text[i];
+      if (c === " " || c === "\t" || c === "\n" || c === "\r") i++;
+      else break;
+    }
+  };
+  const readString = () => {
+    if (text[i] !== '"') fail("expected a string");
+    i++;
+    let value = "", escaped = false;
+    for (;;) {
+      if (i >= text.length) fail("unterminated string");
+      const c = text[i];
+      if (c === '"') { i++; return { value, escaped }; }
+      if (c === "\\") {
+        escaped = true;
+        i++;
+        const e = text[i++];
+        if (e === "u") {
+          const hex = text.slice(i, i + 4);
+          if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail("invalid \\u escape");
+          value += String.fromCharCode(parseInt(hex, 16));
+          i += 4;
+        } else if (Object.prototype.hasOwnProperty.call(JSON_ESCAPES, e)) {
+          value += JSON_ESCAPES[e];
+        } else fail("invalid escape");
+        continue;
+      }
+      if (c.charCodeAt(0) < 0x20) fail("unescaped control character in string");
+      value += c;
+      i++;
+    }
+  };
+  const readNumber = () => {
+    const start = i;
+    if (text[i] === "-") i++;
+    if (text[i] === "0") i++;
+    else if (text[i] >= "1" && text[i] <= "9") { while (text[i] >= "0" && text[i] <= "9") i++; }
+    else fail("expected a number");
+    if (text[i] === ".") {
+      i++;
+      if (!(text[i] >= "0" && text[i] <= "9")) fail("expected a fraction digit");
+      while (text[i] >= "0" && text[i] <= "9") i++;
+    }
+    if (text[i] === "e" || text[i] === "E") {
+      i++;
+      if (text[i] === "+" || text[i] === "-") i++;
+      if (!(text[i] >= "0" && text[i] <= "9")) fail("expected an exponent digit");
+      while (text[i] >= "0" && text[i] <= "9") i++;
+    }
+    return text.slice(start, i);
+  };
+  const readLiteral = (word) => {
+    if (text.slice(i, i + word.length) !== word) fail("unexpected token");
+    i += word.length;
+  };
+  // Returns the raw source text when the value is a number, else null.
+  const readValue = (depth) => {
+    const c = text[i];
+    if (c === "{") { readObject(depth); return null; }
+    if (c === "[") { readArray(depth); return null; }
+    if (c === '"') { readString(); return null; }
+    if (c === "t") { readLiteral("true"); return null; }
+    if (c === "f") { readLiteral("false"); return null; }
+    if (c === "n") { readLiteral("null"); return null; }
+    return readNumber();
+  };
+  const readArray = (depth) => {
+    i++; ws();
+    if (text[i] === "]") { i++; return; }
+    for (;;) {
+      ws(); readValue(depth + 1); ws();
+      if (text[i] === ",") { i++; continue; }
+      if (text[i] === "]") { i++; return; }
+      fail("expected , or ] in array");
+    }
+  };
+  const readObject = (depth) => {
+    const members = depth === 0 ? new Map() : null;
+    if (members) topLevel = members;
+    i++; ws();
+    if (text[i] === "}") { i++; return; }
+    for (;;) {
+      ws();
+      const name = readString();
+      ws();
+      if (text[i] !== ":") fail("expected : after a member name");
+      i++; ws();
+      const literal = readValue(depth + 1);
+      if (members) {
+        const seen = members.get(name.value) ||
+          { count: 0, escaped: false, numberLiterals: [] };
+        seen.count++;
+        seen.escaped = seen.escaped || name.escaped;
+        if (literal !== null) seen.numberLiterals.push(literal);
+        members.set(name.value, seen);
+      }
+      ws();
+      if (text[i] === ",") { i++; continue; }
+      if (text[i] === "}") { i++; return; }
+      fail("expected , or } in object");
+    }
+  };
+
+  try {
+    ws();
+    if (i >= text.length) fail("empty document");
+    readValue(0);
+    ws();
+    if (i !== text.length) fail("trailing content after the JSON document");
+  } catch (e) {
+    return { ok: false, errors: [`document: not well-formed JSON — ${e.message}`], topLevel: null };
+  }
+
+  if (topLevel) {
+    for (const [name, seen] of topLevel) {
+      const isDisc = DISCRIMINATOR_KEYS.includes(name);
+      if (seen.count > 1) {
+        errors.push(isDisc
+          ? `document: version discriminator "${name}" occurs ${seen.count} times at the top level of the received bytes — JSON.parse keeps only the last, so the document and the parsed record disagree about which schema (and which signature check) applies; refused as MALFORMED (fail closed, §12.6)`
+          : `document: top-level member "${name}" occurs ${seen.count} times in the received bytes — a duplicated member is ambiguous about what was signed and what any two readers will see; refused as MALFORMED (fail closed, §12.6)`);
+      }
+      if (isDisc && seen.escaped) {
+        errors.push(`document: version discriminator "${name}" is written with a \\u escape in the received bytes — a discriminator that only becomes itself after unescaping hides the version from every reader that has not parsed; refused as MALFORMED (fail closed, §12.6)`);
+      }
+      if (name === "record_version") {
+        for (const literal of seen.numberLiterals) {
+          if (!CANONICAL_UINT.test(literal))
+            errors.push(`document: record_version is written as \`${literal}\` — JSON.parse folds that to the same double as the plain integer, so the bytes and the parsed version claim differ; a producer emits a bare integer (fail closed, §12.6)`);
+        }
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors, topLevel };
+}
+
+// Structural validation against the v1/v2/v3 field tables. Returns
+// { ok, version, errors, document_checked } plus, on v3,
+// `receipt_signature_valid` (the Object B Ed25519 envelope — deliberately NOT
+// named `signature_valid`, which downstream verifiers already use for the
+// DIFFERENT `signed_config` object).
+// version: "v3"|"v2" (current) | "v1" (accepted-legacy) | "v0-live"
+// (grandfathered) | "v0-check" (rejected legacy Schema K) | null (unrecognized).
+//
+// CONTRACT (§12.6), and it is a change: `r` may be EITHER the raw received
+// document text (a string) or an already-parsed object.
+//   * Anything that came off a wire, a file, or a URL fragment MUST be passed
+//     as the TEXT. Only then are the document-level checks possible at all,
+//     and only then does `document_checked: true` come back. `record` carries
+//     the parsed object so the caller need not parse it twice.
+//   * The object form remains supported for records this process MINTED (no
+//     received bytes exist to check) and returns `document_checked: false`.
+//     A `false` there means the version claim was never checked against any
+//     document: a consumer must NOT read `ok: true` on that path as evidence
+//     about what a peer sent. It is not a warning that can be ignored — it is
+//     the difference between "this object is well formed" and "the bytes we
+//     received say this".
+//
+// v3 verification is cryptographic: pass opts.ed25519Verify(message,
+// signature, publicKey) -> boolean (Uint8Array args; e.g. tweetnacl's
+// nacl.sign.detached.verify). Without it a v3 receipt FAILS validation with an
+// explicit UNVERIFIED error — the module stays dependency-free and the caller
+// cannot silently skip the check.
+export function validateReceipt(r, opts = {}) {
+  if (typeof r === "string") return validateReceiptDocument(r, opts);
+  const out = validateParsedReceipt(r, opts);
+  out.document_checked = false;
+  return out;
+}
+
+// The wire entry point: scan the received bytes for the ambiguities
+// `JSON.parse` would collapse, THEN parse those same untouched bytes and
+// validate the record. Refuses before parsing if the document lies about its
+// own version claim.
+export function validateReceiptDocument(text, opts = {}) {
+  const scan = scanReceiptDocument(text);
+  if (!scan.ok)
+    return { ok: false, version: null, errors: scan.errors, document_checked: true };
+  let record;
+  try {
+    record = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, version: null, document_checked: true,
+      errors: [`document: not parseable JSON — ${e.message}`] };
+  }
+  const out = validateParsedReceipt(record, opts);
+  out.document_checked = true;
+  out.record = record;
+  return out;
+}
+
+function validateParsedReceipt(r, opts = {}) {
   const errors = [];
   if (!isObj(r)) return { ok: false, version: null, errors: ["receipt is not an object"] };
   if ("authority_trusted" in r)
     errors.push("authority_trusted: verifier-computed only; forbidden in a receipt");
 
+  // A version is claimed through exactly ONE of four discriminator key
+  // families — six recognized version claims in total:
+  //   1. seal_receipt                  ("v1" | "v2" — fleet JS producers)
+  //   2. record_type + record_version  (host records: 2 → v2, 3 → v3)
+  //   3. seal_live_receipt             ("v0" — grandfathered live demo)
+  //   4. seal_check_receipt            (legacy Schema K, always refused)
+  // A record presenting keys from MORE THAN ONE family is MALFORMED and is
+  // refused before any classification: it is not a v2 record and not a v3
+  // record; it is a document trying to be classified favourably. Concretely,
+  // a signed v3 body with `seal_receipt: "v2"` bolted on would otherwise win
+  // the v2 branch and skip Object B signature verification entirely — a
+  // downgrade that turns `ok: true` into a forgery vector. No priority order
+  // among the families is safe: preferring the highest version present merely
+  // converts the downgrade into an upgrade attack. Fail closed instead.
+  // "Present" = the key exists with a non-undefined value; JSON.parse never
+  // yields undefined, so wire records are judged on key presence alone.
+  // This gate reads the PARSED OBJECT, which is exactly its blind spot: a
+  // document repeating one discriminator collapses to a single family here
+  // and the gate has nothing to fire on. That case is caught earlier, on the
+  // bytes, by scanReceiptDocument (§12.6) — the two rules are complements,
+  // and only the document path runs both.
+  const discFamilies = [];
+  if (r.seal_receipt !== undefined) discFamilies.push("seal_receipt");
+  if (r.record_type !== undefined || r.record_version !== undefined)
+    discFamilies.push("record_type/record_version");
+  if (r.seal_live_receipt !== undefined) discFamilies.push("seal_live_receipt");
+  if (r.seal_check_receipt !== undefined) discFamilies.push("seal_check_receipt");
+  if (discFamilies.length > 1) {
+    return { ok: false, version: null,
+      errors: [`conflicting version discriminators: ${discFamilies.join(" + ")} — a record claiming more than one schema version is malformed and refused (fail closed, §12.0)`] };
+  }
+
   let version = null;
   if (r.seal_receipt === RECEIPT_SCHEMA_VERSION_V2) version = "v2";
   else if (r.record_type === "seal.authorization-decision" && r.record_version === 2) version = "v2";
+  // Exact equality per version, ONE branch each — never a range match
+  // (`record_version >= 2` would silently accept v4/v5, which is precisely
+  // how an unspecified version becomes invisible). An unknown record_version
+  // falls through to "no recognized version discriminator" and is refused.
+  else if (r.record_type === "seal.authorization-decision" && r.record_version === 3) version = "v3";
   else if (r.seal_receipt === RECEIPT_SCHEMA_VERSION) version = "v1";
   else if (r.seal_live_receipt === "v0") version = "v0-live";
   else if ("seal_check_receipt" in r) {
@@ -319,10 +603,10 @@ export function validateReceipt(r) {
     } else if (typeof w !== "string" || !HEX64.test(w)) {
       errors.push("kernel_identity.wasm_sha256: 64-hex string required when mediated");
     }
-    // §4 HARD SPLIT (v1 and v2; v0-live merged blocks are grandfathered):
+    // §4 HARD SPLIT (v1, v2 and v3; v0-live merged blocks are grandfathered):
     // identity is the binary hash — asserted provenance lives in its own
-    // block. A v1/v2 kernel_identity carrying toolchain/axioms is INVALID.
-    if (version === "v1" || version === "v2") {
+    // block. A v1/v2/v3 kernel_identity carrying toolchain/axioms is INVALID.
+    if (version === "v1" || version === "v2" || version === "v3") {
       for (const k of ["lean_toolchain", "axioms"]) {
         if (k in r.kernel_identity)
           errors.push(`kernel_identity.${k}: forbidden in ${version} (hard split, L0 §6.2) — move to asserted_provenance`);
@@ -339,7 +623,7 @@ export function validateReceipt(r) {
     if (r.host_identity.equivalence !== "not_proven")
       errors.push("host_identity.equivalence: must be not_proven");
   }
-  if ((version === "v1" || version === "v2") && "asserted_provenance" in r) {
+  if ((version === "v1" || version === "v2" || version === "v3") && "asserted_provenance" in r) {
     if (!isObj(r.asserted_provenance) || r.asserted_provenance.verified_in_browser === true)
       errors.push("asserted_provenance: object with verified_in_browser !== true required (asserted, never verified)");
   }
@@ -357,7 +641,13 @@ export function validateReceipt(r) {
     if (!("deny_kernel" in r)) errors.push("deny_kernel: required when mediated (string or null)");
   }
 
-  if (version === "v2") validateV2Extras(r, errors);
+  // §12: v3 is purely additive over v2 — the full v2 body obligations apply
+  // unchanged, then the release-authority extras and the Object B signature.
+  if (version === "v2" || version === "v3") validateV2Extras(r, errors);
+  if (version === "v3") {
+    const receipt_signature_valid = validateV3Extras(r, errors, opts.ed25519Verify);
+    return { ok: errors.length === 0, version, errors, receipt_signature_valid };
+  }
 
   return { ok: errors.length === 0, version, errors };
 }
@@ -462,4 +752,188 @@ function validateV2Extras(r, errors) {
       if (f in r) errors.push(`${f}: present but the config declares no payment class for ${r.tool} (fabrication)`);
     }
   }
+}
+
+// --- §12: v3 release authority + Object B signature --------------------------
+// Producer: seal-host rust/src/release.rs (attach_and_sign / ReceiptSigner).
+// v3 adds four always-present signed fields (release_status, operation_id,
+// durability_class, signature) and three ALLOW-only companions
+// (release_valid_until, post_state_hash, release_frame).
+//
+// NAME COLLISION, deliberate and documented: v1 receipts may carry an optional
+// live-demo HMAC field also called `signature` (different shape, unchecked
+// here). The discriminators are disjoint keys (v1: `seal_receipt`; v3:
+// `record_type`+`record_version`), so a v1 record can never reach this branch;
+// a record carrying BOTH discriminator families is refused as MALFORMED by
+// the dual-discriminator rule in validateReceipt (it never classifies at
+// all, so it can neither downgrade to v2 nor reach this branch). Likewise
+// `signed_config.signature`
+// (config authority) and approval signatures are DIFFERENT objects under
+// different keys — none of them is this envelope.
+
+const SIGNATURE_KEYS_SORTED = ["algorithm", "domain", "encoding", "key_id", "public_key", "value"];
+const B64_STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const B64_URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16);
+  return out;
+}
+
+// Strict decoder for both alphabets. Standard padding is accepted on B64_STD
+// only; non-alphabet characters and non-zero trailing bits are rejected
+// (returns null — a malleable signature encoding must not verify).
+function base64Bytes(input, alphabet) {
+  if (typeof input !== "string") return null;
+  let s = input;
+  if (alphabet === B64_STD) s = s.replace(/=+$/, "");
+  if (s.length % 4 === 1) return null;
+  const out = new Uint8Array(Math.floor((s.length * 3) / 4));
+  let buf = 0, bits = 0, n = 0;
+  for (const ch of s) {
+    const v = alphabet.indexOf(ch);
+    if (v < 0) return null;
+    buf = (buf << 6) | v; bits += 6;
+    if (bits >= 8) { bits -= 8; out[n++] = (buf >> bits) & 255; }
+  }
+  if (bits && (buf & ((1 << bits) - 1))) return null;
+  return out.subarray(0, n);
+}
+
+// §12.2 preimage:  "seal.object-b/v1" || 0x00 || u64_be(len(bytes)) || bytes
+// where bytes = the compact JSON of the record with `signature` removed, in
+// the record's OWN stored key order.
+//
+// THE preserve_order CRUX: the producer serializes with serde_json's
+// preserve_order feature, so the covered bytes are in producer INSERTION
+// order, not sorted keys. Do NOT canonicalise or sort here — a sorted rebuild
+// produces a preimage that verifies nothing. JSON.parse + JSON.stringify
+// round-trips string-keyed member order faithfully; two honest limits, both
+// fail CLOSED (signature refuses, never falsely accepts): (1) JS reorders
+// integer-like member names to the front, so a producer map with such keys
+// out of that order cannot be re-serialized byte-identically; (2) numbers
+// outside the exact-double range (|n| >= 2^53, or any non-shortest float
+// spelling) lose their source bytes at JSON.parse.
+export function receiptSignaturePreimage(record) {
+  const unsigned = {};
+  for (const k of Object.keys(record)) if (k !== "signature") unsigned[k] = record[k];
+  const body = new TextEncoder().encode(JSON.stringify(unsigned));
+  const out = new Uint8Array(17 + 8 + body.length);
+  out.set(new TextEncoder().encode(RECEIPT_SIGNATURE_DOMAIN)); // 16 chars…
+  out[16] = 0; // …plus the trailing NUL: SIGNATURE_DOMAIN is 17 bytes.
+  let len = body.length;
+  for (let i = 24; i >= 17; i--) { out[i] = len % 256; len = Math.floor(len / 256); }
+  out.set(body, 25);
+  return out;
+}
+
+// §12.1 operation-state bind: sha256 of the exact compact serde_json bytes
+// {"operation_id":…,"release_frame_sha256":…} (this insertion order).
+export function postStateHash(operationId, frameSha256) {
+  return sha256Hex(new TextEncoder().encode(
+    `{"operation_id":${JSON.stringify(operationId)},"release_frame_sha256":${JSON.stringify(frameSha256)}}`));
+}
+
+// Shape + cryptographic check of the Object B envelope. Returns
+// { receipt_signature_valid, errors }. receipt_signature_valid is true ONLY
+// when the shape is exact AND the Ed25519 primitive ran and accepted; an
+// absent signature, a malformed envelope, or a missing primitive all fail.
+// Trust caveat (§12.4): a passing check binds the record to the EMBEDDED
+// public key; binding that key to a deployment needs an out-of-band pin.
+export function verifyReceiptSignature(record, ed25519Verify) {
+  const errors = [];
+  const s = isObj(record) ? record.signature : undefined;
+  if (!isObj(s)) {
+    return { receipt_signature_valid: false,
+      errors: ["signature: Object B envelope required on every v3 receipt (absent means invalid, not optional)"] };
+  }
+  if (JSON.stringify(Object.keys(s).sort()) !== JSON.stringify(SIGNATURE_KEYS_SORTED))
+    errors.push("signature: exactly the members domain,algorithm,public_key,key_id,encoding,value required");
+  if (s.domain !== RECEIPT_SIGNATURE_DOMAIN)
+    errors.push(`signature.domain: must be ${RECEIPT_SIGNATURE_DOMAIN}`);
+  if (s.algorithm !== "Ed25519") errors.push("signature.algorithm: must be Ed25519");
+  if (s.encoding !== "base64url-nopad") errors.push("signature.encoding: must be base64url-nopad");
+  if (typeof s.public_key !== "string" || !HEX64.test(s.public_key))
+    errors.push("signature.public_key: 64-hex Ed25519 public key required");
+  if (typeof s.key_id !== "string" || !HEX64.test(s.key_id))
+    errors.push("signature.key_id: 64-hex string required");
+  const sigBytes = base64Bytes(s.value, B64_URL);
+  if (sigBytes === null || sigBytes.length !== 64)
+    errors.push("signature.value: base64url-nopad of a 64-byte Ed25519 signature required");
+  if (errors.length === 0) {
+    const pub = hexToBytes(s.public_key);
+    if (s.key_id !== sha256Hex(pub)) {
+      errors.push("signature.key_id: does not equal sha256 of the public key bytes");
+    } else if (typeof ed25519Verify !== "function") {
+      errors.push("signature: UNVERIFIED — v3 validation requires an Ed25519 primitive; pass opts.ed25519Verify(message, signature, publicKey) (fail closed, never skipped)");
+    } else if (ed25519Verify(receiptSignaturePreimage(record), sigBytes, pub) !== true) {
+      errors.push("signature.value: Ed25519 verification failed over the seal.object-b/v1 preimage (record was mutated after signing, or signed by other bytes)");
+    }
+  }
+  return { receipt_signature_valid: errors.length === 0, errors };
+}
+
+// §12 checks beyond the v2 body. Returns receipt_signature_valid.
+function validateV3Extras(r, errors, ed25519Verify) {
+  if (!RELEASE_STATUSES.includes(r.release_status))
+    errors.push(`release_status: one of ${RELEASE_STATUSES.join("|")} required (v3)`);
+  if (typeof r.operation_id !== "string" || !HEX64.test(r.operation_id))
+    errors.push("operation_id: 64-hex string (32 random bytes) required (v3)");
+  if (!DURABILITY_CLASSES.includes(r.durability_class))
+    errors.push(`durability_class: one of ${DURABILITY_CLASSES.join("|")} required (v3)`);
+
+  if (r.verdict === "ALLOW") {
+    // Release authority: the exact frame the host may forward, bound to the
+    // signed operation_id and to the operation-state burn entry.
+    if (r.release_status === "NOT_APPLICABLE")
+      errors.push("release_status: must not be NOT_APPLICABLE on ALLOW (PENDING|UNKNOWN|RELEASED)");
+    if (!Number.isInteger(r.release_valid_until) || r.release_valid_until < 0)
+      errors.push("release_valid_until: non-negative integer (epoch ms) required on ALLOW (v3)");
+    const pshOk = typeof r.post_state_hash === "string" && HEX64.test(r.post_state_hash);
+    if (!pshOk) errors.push("post_state_hash: 64-hex string required on ALLOW (v3)");
+    const f = r.release_frame;
+    if (!isObj(f)) {
+      errors.push("release_frame: object required on ALLOW (v3)");
+    } else {
+      if (f.encoding !== "base64") errors.push("release_frame.encoding: must be base64");
+      if (!Number.isInteger(f.length) || f.length < 0)
+        errors.push("release_frame.length: non-negative integer required");
+      if (typeof f.sha256 !== "string" || !HEX64.test(f.sha256))
+        errors.push("release_frame.sha256: 64-hex string required");
+      const frame = base64Bytes(f.base64, B64_STD);
+      if (frame === null) {
+        errors.push("release_frame.base64: base64 string required");
+      } else {
+        if (frame.length !== f.length)
+          errors.push("release_frame.length: does not equal the decoded frame length");
+        const frameSha = sha256Hex(frame);
+        if (typeof f.sha256 === "string" && HEX64.test(f.sha256) && frameSha !== f.sha256)
+          errors.push("release_frame.sha256: does not equal sha256 of the decoded frame bytes");
+        // Producer strips one trailing \r\n or \n before parsing the body.
+        let end = frame.length;
+        if (end >= 2 && frame[end - 2] === 13 && frame[end - 1] === 10) end -= 2;
+        else if (end >= 1 && frame[end - 1] === 10) end -= 1;
+        let frameJson;
+        try { frameJson = JSON.parse(new TextDecoder().decode(frame.subarray(0, end))); }
+        catch { errors.push("release_frame: decoded frame is not a JSON object"); }
+        if (frameJson !== undefined &&
+            (!isObj(frameJson) || frameJson.operation_id !== r.operation_id))
+          errors.push("release_frame: frame operation_id does not equal the signed top-level operation_id (the id must be forwarded unchanged)");
+        if (pshOk && typeof r.operation_id === "string" &&
+            r.post_state_hash !== postStateHash(r.operation_id, frameSha))
+          errors.push("post_state_hash: does not equal sha256 of the {operation_id, release_frame_sha256} operation state (bind broken)");
+      }
+    }
+  } else {
+    if (RELEASE_STATUSES.includes(r.release_status) && r.release_status !== "NOT_APPLICABLE")
+      errors.push("release_status: must be NOT_APPLICABLE on a non-ALLOW receipt");
+    for (const k of ["release_valid_until", "post_state_hash", "release_frame"]) {
+      if (k in r) errors.push(`${k}: ALLOW-only release authority; must be absent on a non-ALLOW receipt (v3)`);
+    }
+  }
+
+  const sig = verifyReceiptSignature(r, ed25519Verify);
+  errors.push(...sig.errors);
+  return sig.receipt_signature_valid;
 }
