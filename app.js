@@ -483,6 +483,12 @@ async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
   } else if (r.outcome === "unpinned") {
     s.textContent = `AUTHENTIC + REPLAY-CONSISTENT, authority NOT established (signed by ${receipt.signed_config.pubkey}, verify it out-of-band).`;
     s.className = "reason warn";
+  } else if (r.outcome === "unverified-document") {
+    // §12.6: object-path ceiling. Every local check passed, but no received
+    // bytes were examined — expected (and honest) for a record minted in this
+    // page; never a verified wire receipt.
+    s.textContent = "LOCAL OBJECT (unverified-document): every local check passed, but this record was handed to the verifier as an already-parsed object, so no received document bytes were examined. That is expected for a receipt minted in this page. Anything that arrived from outside must be verified as its raw text.";
+    s.className = "reason warn";
   } else {
     s.textContent = "One or more checks did not pass. Treat this receipt with suspicion.";
     s.className = "reason bad";

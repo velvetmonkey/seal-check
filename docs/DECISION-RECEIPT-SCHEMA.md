@@ -498,8 +498,17 @@ validateReceipt(object,  { ed25519Verify })  // minted-in-process records only
   not decoration: `ok: true` with `document_checked: false` says *this object
   is well formed*, never *the bytes we received say this*. A consumer that
   treats the two as the same thing has the A9 bug.
-* `verifyReceipt(input, …)` (receipt.js) takes the same either/or and surfaces
-  the same `document_checked`. `decodeReceiptDocument()` returns the deep
+* `verifyReceipt(input, …)` (receipt.js) takes the same either/or, and there
+  the distinction is carried by the RESULT TYPE, not by a flag a consumer may
+  skip: an object input can never produce `outcome: "authorised"`,
+  `"authorised-unparseable"` or `"unpinned"`, never `verificationCore: true`,
+  never `allGood: true`. Its ceiling is the distinct outcome
+  **`unverified-document`** (every local check passed; no received bytes were
+  examined) — the same discipline as §11.1's `authorised-unparseable`: a
+  smaller verification scope is its own named state, not a pass. A consumer
+  that keys only on `outcome` — as `test/verify-file.cjs` does — therefore
+  cannot mistake an object-path result for a verified wire receipt.
+  `decodeReceiptDocument()` returns the deep
   link's raw text; `decodeReceiptParam()` (parsed) remains for callers that
   only want to *read* fields and must not be used as verification input.
 * Callers updated in this repo: `app.js` (deep link → text), `test/verify-file.cjs`

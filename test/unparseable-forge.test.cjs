@@ -90,11 +90,19 @@ function writeCanonical(dir, name, receiptObj, F) {
   // --- Leg (a): NON-VACUITY. The forge genuinely reaches the reporting seam.
   // If it were rejected at shape, the CLI leg would prove nothing.
   const forge = F.assembleReceiptV2(forgedUnparseableAllow());
-  const vr = await R.verifyReceipt(JSON.parse(JSON.stringify(forge)), { expectedConfigPubkey: cfg.PUBKEY });
+  // §12.6: the forge models RECEIVED bytes, so the verifier gets the text.
+  const vr = await R.verifyReceipt(JSON.stringify(forge), { expectedConfigPubkey: cfg.PUBKEY });
   check("forge non-vacuity: format ok (reaches the reporting seam)", vr.formatOk === true,
     (vr.formatErrors || []).join("; "));
   check("forge non-vacuity: reduced-scope outcome, config signature accepted",
     vr.outcome === "authorised-unparseable" && vr.signature_valid === true && vr.allGood === false, vr.outcome);
+  // The same forge handed over as an already-parsed OBJECT cannot claim even
+  // the reduced-scope wire state — the object path's ceiling is the distinct
+  // unverified-document outcome.
+  const vrObj = await R.verifyReceipt(JSON.parse(JSON.stringify(forge)), { expectedConfigPubkey: cfg.PUBKEY });
+  check("forge as OBJECT: ceiling unverified-document, never authorised-unparseable",
+    vrObj.outcome === "unverified-document" && vrObj.allGood === false && vrObj.verificationCore === false,
+    vrObj.outcome);
 
   // --- Leg (b): the config-reusing forge is REDUCED SCOPE at the CLI, never a pass.
   const forgeFile = writeCanonical(dir, "forge-allow.json", forgedUnparseableAllow(), F);
