@@ -2,9 +2,13 @@
 // receipt-format.js — the ONE shared implementation of the canonical decision-
 // receipt format (normative spec: docs/DECISION-RECEIPT-SCHEMA.md).
 //
-// CANONICAL SOURCE. seal-assurance-kit vendors a byte-identical copy at
-// kernel/receipt-format.js (same discipline as its vendored kernel.js /
-// seal-config.js): any change lands HERE first, then is re-copied verbatim.
+// CANONICAL SOURCE. Any change to the receipt format lands HERE first, and
+// every downstream copy is re-derived from this file, never the reverse.
+// This file asserts NOTHING about what any downstream copy currently holds:
+// it cannot see them, so such a claim would go false the moment one drifted
+// and nothing here would change. Each copy declares its own relationship to
+// this file in its own header; seal-assurance-kit's
+// test/fleet-copy-differential.cjs is what actually measures fleet agreement.
 //
 // Pure ES module, browser + Node, zero dependencies. This module is the
 // serialization/format seam ONLY — no kernel logic, no decision semantics.
