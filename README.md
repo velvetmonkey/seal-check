@@ -20,7 +20,7 @@ One command serves the page. Click the tamper example and watch it fail. That's 
 python3 -m http.server 8000   # then open http://localhost:8000 and hit "Verify a receipt"
 ```
 
-The page bundles the audited wasm, re-runs the kernel over the exact bytes, and shows the verdict row. Browser deep links are deliberately **UNPINNED**: they verify signature and replay consistency but do not establish operator authority. Nothing leaves the browser.
+The page bundles the pinned wasm kernel (sha256 `0b5e7925…`, re-hashed in your browser against the pinned constant), re-runs it over the exact bytes, and shows the verdict row. Browser deep links are deliberately **UNPINNED**: they verify signature and replay consistency but do not establish operator authority. Nothing leaves the browser.
 
 ## Two honest paths
 
