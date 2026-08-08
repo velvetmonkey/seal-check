@@ -13,7 +13,7 @@
       "type": "mcp-jsonrpc/tools-call",
       "version": "1"
     },
-    "session": "seal-host-rs/stdio:3249791:1786116177291",
+    "session": "seal-host-rs/stdio:628620:1786193151259",
     "effect": {
       "resource": "shell_exec",
       "action": "call",
@@ -22,13 +22,13 @@
       }
     },
     "raw_preimage_sha256": "9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
-    "policy_hash": "5f3dcf37b3f86d3b968a151f882df8d96afa16a209efcdaf2b42cf83b9b2d105",
-    "idempotency_key": "seal-host-rs/stdio:3249791:1786116177291:9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
+    "policy_hash": "5a671bb719c6463e03328ba2e7d9482c22584cf1a0982189cf401b161d4d2a15",
+    "idempotency_key": "seal-host-rs/stdio:628620:1786193151259:9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
     "policy_version": 1,
     "policy_version_enforced": false,
     "authoritative": false
   },
-  "now": 1786116184463,
+  "now": 1786193158234,
   "canonical_request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"shell_exec\",\"arguments\":{\"command\":\"rm -rf /\"}}}",
   "canonical_request_sha256": "9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
   "request_sha256": "9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437",
@@ -54,13 +54,13 @@
   ],
   "emitted_bytes": "{\"audit\":\"{\\\"certs\\\":[{\\\"certHash\\\":\\\"15967791360716556519\\\",\\\"kernel\\\":\\\"safety\\\",\\\"reason\\\":\\\"ed1ea2c2dd6bc7831fa4801024f264959cc39dcd00e4e3a530ab9b7837f9dbc2\\\",\\\"verdict\\\":\\\"deny\\\"},{\\\"certHash\\\":\\\"12756644985251018087\\\",\\\"kernel\\\":\\\"temporal\\\",\\\"reason\\\":\\\"trace ok (1 events)\\\",\\\"verdict\\\":\\\"allow\\\"}],\\\"epoch\\\":1,\\\"request_sha256\\\":\\\"9e76eb3c5825875d5c0acd9dda268a0a23038671403458e07a32c1e0b3cf4437\\\",\\\"tool\\\":\\\"shell_exec\\\",\\\"verdict\\\":\\\"deny\\\"}\",\"response\":\"{\\\"id\\\":1,\\\"jsonrpc\\\":\\\"2.0\\\",\\\"result\\\":{\\\"content\\\":[{\\\"text\\\":\\\"approval required: ed1ea2c2dd6bc7831fa4801024f264959cc39dcd00e4e3a530ab9b7837f9dbc2\\\",\\\"type\\\":\\\"text\\\"}],\\\"isError\\\":true}}\\n\",\"route\":\"block\"}",
   "kernel_identity": {
-    "wasm_sha256": "0b5e792500592b56847f70b1e27e47aecdc65023c7c59fd79695102c465f26ec",
+    "wasm_sha256": "28bb3ae71985357163e3b651791e2a70c462ea5d1313a59b4967d4c20ea77657",
     "self_verified": true,
     "note": "Re-derive against this wasm; the native executor is identified separately, not proven equivalent."
   },
   "host_identity": {
-    "native_executable_sha256": "d3ce0a7e2e6b4658bb40e0c19cc6185ddfd1e992e03cf3037e47a51a48606353",
-    "lean_ffi_sha256": "e03c7481491faac72d8fa4683ea361225d1122c4b63bea9fd44b793c3ca194a0",
+    "native_executable_sha256": "484deca58ae56e9ee9d52eaa5139479a56a256854d0c57ed6305e7e940eaddf1",
+    "lean_ffi_sha256": "02f072b3af602470973bbf6c195cddee371875607ecddab005765a0c665ec14f",
     "equivalence": "not_proven"
   },
   "asserted_provenance": {
@@ -74,9 +74,9 @@
     "note": "Source-level provenance asserted by the producer; not established by this authorization decision."
   },
   "signed_config": {
-    "payload": "{\"epoch\":1,\"server\":\"seal-shell-demo@1.0.0\",\"safety\":{\"approval\":{\"ttl_seconds\":120,\"control_file\":\"/tmp/seal-golden-path-33snar6q/unused-approvals.ndjson\",\"replay_store\":{\"sqlite_path\":\"/tmp/seal-golden-path-33snar6q/approval-replay.sqlite\",\"schema_version\":2,\"namespace_encoding_version\":1}},\"tools\":[{\"name\":\"read_file\",\"mode\":\"allow\",\"target\":[{\"full_arguments\":true}],\"_seal_scaffold\":{\"reason\":\"readonly\"},\"_comment\":\"unverified suggestion -- server self-described readOnly\",\"_seal_demo_tier\":{\"tier\":\"dev-box deterministic-tested (local run); CI configured but not run; operator-verified: NO\",\"evidence_scope\":\"local containment, injected BLOCK, both tamper legs, downstream non-receipt, receipt verify, and scan passed\",\"proven\":\"reference kernel invariant only; integration is not universally proven\",\"ci_tested\":false,\"ci_status\":\"configured; pending base-revision and assurance-kit pushes plus the first green workflow\",\"operator_verified\":false,\"operator_status\":\"operator-untested until run by Ben\"}},{\"name\":\"shell_exec\",\"mode\":\"guard\",\"target\":[{\"full_arguments\":true}],\"_seal_scaffold\":{\"reason\":\"destructive\"}}]},\"temporal\":{\"enabled\":false,\"policies\":[]}}",
-    "signature": "56f49c06b9d1fd25432504cab41309ea7f045fb67e5cce12148585ffd7117561ca3e2afe82b9717de823a1378362d8a3a19b78dc81f46130c36fe9d0ff3ce104",
-    "pubkey": "a77344eabcdad5624c3d67340d45beec5d93ce3b1da1187fa5cc0587293c7783"
+    "payload": "{\"epoch\":1,\"server\":\"seal-shell-demo@1.0.0\",\"safety\":{\"approval\":{\"ttl_seconds\":120,\"control_file\":\"/tmp/seal-golden-path-vpqtfu8o/unused-approvals.ndjson\",\"replay_store\":{\"sqlite_path\":\"/tmp/seal-golden-path-vpqtfu8o/approval-replay.sqlite\",\"schema_version\":2,\"namespace_encoding_version\":1}},\"tools\":[{\"name\":\"read_file\",\"mode\":\"allow\",\"target\":[{\"full_arguments\":true}],\"_seal_scaffold\":{\"reason\":\"readonly\"},\"_comment\":\"unverified suggestion -- server self-described readOnly\",\"_seal_demo_tier\":{\"tier\":\"dev-box deterministic-tested (local run); CI configured but not run; operator-verified: NO\",\"evidence_scope\":\"local containment, injected BLOCK, both tamper legs, downstream non-receipt, receipt verify, and scan passed\",\"proven\":\"reference kernel invariant only; integration is not universally proven\",\"ci_tested\":false,\"ci_status\":\"configured; pending base-revision and assurance-kit pushes plus the first green workflow\",\"operator_verified\":false,\"operator_status\":\"operator-untested until run by Ben\"}},{\"name\":\"shell_exec\",\"mode\":\"guard\",\"target\":[{\"full_arguments\":true}],\"_seal_scaffold\":{\"reason\":\"destructive\"}}]},\"temporal\":{\"enabled\":false,\"policies\":[]}}",
+    "signature": "9872decac1788140fdc0c6e954abf918485d269eb16824b578fd5af8c671cdd18296ec95d32133c8068c3c6adf3fd491af97fb9c8fb281720af2207e3c7d4b0b",
+    "pubkey": "bdf3db19a2007e5b6ab0d2a6578006d07ff8f7a35a7a8c0b3ed51de411d2e8ff"
   },
   "kernel_config": {
     "epoch": 1,
@@ -84,9 +84,9 @@
     "safety": {
       "approval": {
         "ttl_seconds": 120,
-        "control_file": "/tmp/seal-golden-path-33snar6q/unused-approvals.ndjson",
+        "control_file": "/tmp/seal-golden-path-vpqtfu8o/unused-approvals.ndjson",
         "replay_store": {
-          "sqlite_path": "/tmp/seal-golden-path-33snar6q/approval-replay.sqlite",
+          "sqlite_path": "/tmp/seal-golden-path-vpqtfu8o/approval-replay.sqlite",
           "schema_version": 2,
           "namespace_encoding_version": 1
         }
@@ -135,14 +135,14 @@
   },
   "granted_capabilities": [],
   "release_status": "NOT_APPLICABLE",
-  "operation_id": "e6a82d4937e9da5ba77c3cfe2c7d7d01994c0afacde01f6d01716cad10960979",
+  "operation_id": "4d571d7ae03e9e7f82e8bd2ea17353ee494cc996d1a857e7393d3e6a0a3954fa",
   "durability_class": "asserted_local_fsync",
   "signature": {
     "domain": "seal.object-b/v1",
     "algorithm": "Ed25519",
-    "public_key": "6513fc070b75409d3fc6b183d1bac4cd5bdaf4804041890b7dd7b9925b18a927",
-    "key_id": "dc3344c66a2f3afec5a5921457eddd6332c181f29f37700fa01a475cc69e9786",
+    "public_key": "85d7bdc4f48aebef2ef5d2e5f75f7ec5b921c1a03f50e4ed786d775b18fff87c",
+    "key_id": "34c49abdb74f5232f476b7f8a44c9afb56db404ca888911d90934158f356cb1c",
     "encoding": "base64url-nopad",
-    "value": "hRUnVZageQEiviA5sz2G13Nvp9icC44DD69qLK__VXcG2E2g61jZfP3N3CM6xW9x8SKv942bGH6e9OyJ-hZzBg"
+    "value": "8S5_aoY1S6FKjQp44seR9hO2HBYZoPQHT_SNv8pkQ37CbY9NwWVVRbCHNp6GgeL_4FUylz-k0DThg3XG18gtBg"
   }
 }

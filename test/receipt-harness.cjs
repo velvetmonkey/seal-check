@@ -47,7 +47,7 @@ const SealModule = globalThis.SealModule;
   const block = await decide(cfg.CFG_STANDARD, { tool: "db.execute", args: { database: "prod", sql: "drop table users" }, approvals: [] });
   const allow = await decide(cfg.CFG_STANDARD, { tool: "store.update", args: { op: "orset.add", key: "k1" }, approvals: [cfg.guardTarget("store.update", { op: "orset.add", key: "k1" })] });
 
-  const expectSha = "0b5e792500592b56847f70b1e27e47aecdc65023c7c59fd79695102c465f26ec";
+  const expectSha = "28bb3ae71985357163e3b651791e2a70c462ea5d1313a59b4967d4c20ea77657";
   let ok = true;
   const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`); ok = ok && cond; };
   const blockR = JSON.parse(block), allowR = JSON.parse(allow);

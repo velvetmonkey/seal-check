@@ -57,7 +57,7 @@ function check(name, got, want) {
     canonical_request_sha256: F.canonicalRequestSha256("db.execute", v1args),
     bypass: false, verdict: "ALLOW", authorization: "approval", reason: "every gating kernel allows", deny_kernel: null,
     certs: [], emitted_bytes: "{}",
-    kernel_identity: { wasm_sha256: "0b5e792500592b56847f70b1e27e47aecdc65023c7c59fd79695102c465f26ec", self_verified: true },
+    kernel_identity: { wasm_sha256: "28bb3ae71985357163e3b651791e2a70c462ea5d1313a59b4967d4c20ea77657", self_verified: true },
     kernel_config: { epoch: 1 },
     granted_capabilities: [{ tool: "db.execute", table: "staging_deploy_audit", operation: "insert" }],
   };

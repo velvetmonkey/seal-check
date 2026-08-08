@@ -22,7 +22,7 @@ import { assembleReceiptV2, canonicalRequest, canonicalRequestSha256 } from "./r
 // THE kernel id and the ONLY thing seal-check verifies in the browser. Toolchain +
 // axioms below are LABELLED provenance the public Lean proofs assert — NOT verified
 // here, NOT blended into the hash.
-export const KERNEL_WASM_SHA256 = "0b5e792500592b56847f70b1e27e47aecdc65023c7c59fd79695102c465f26ec";
+export const KERNEL_WASM_SHA256 = "28bb3ae71985357163e3b651791e2a70c462ea5d1313a59b4967d4c20ea77657";
 export const WASM_URL = "wasm/seal.wasm";
 export const LEAN_TOOLCHAIN = "leanprover/lean4:v4.28.0";
 export const KERNEL_AXIOMS = ["propext", "Classical.choice", "Quot.sound"];
