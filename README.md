@@ -10,6 +10,8 @@
 
 Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the proven decision procedure over the exact bytes. Genuine receipts can be authentic and replay-consistent; operator authority additionally requires an independently provisioned public-key pin.
 
+**Family framing — independent re-derivation.** seal-check serves the deployed-decisions limb of Seal's framing: it independently re-derives a decision against pinned kernel bytes. The family gate is machine-checked and effect sufficiency is tested elsewhere; this checker does not read intent and does not turn replay into a claim that the whole deployed host is proved.
+
 One command serves the page. Click the tamper example and watch it fail. That's the product.
 
 ## Quick start: verify, then tamper
