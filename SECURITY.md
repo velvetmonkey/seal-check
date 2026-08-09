@@ -1,6 +1,6 @@
 # Security Policy
 
-Seal is private pre-release software. Do not disclose suspected vulnerabilities publicly before the operator has reviewed them.
+Seal is pre-release software. Do not disclose suspected vulnerabilities publicly before the operator has reviewed them.
 
 Report security issues privately to the repository owner with:
 
