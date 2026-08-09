@@ -1,6 +1,6 @@
 <!-- VENDORED COPY. Upstream normative source: seal-host/docs/DECISION-RECEIPT-SCHEMA.md
-     (private). Copied into seal-check so the v1 schema cited by receipt-format.js,
-     receipt.js, kernel.js and the L0 profile is reachable without the private repo.
+     (public). Copied into seal-check so the v1 schema cited by receipt-format.js,
+     receipt.js, kernel.js and the L0 profile is reachable without another repository checkout.
      Keep in sync with upstream; upstream wins on any divergence. -->
 
 <!-- SPDX-License-Identifier: Apache-2.0 -->

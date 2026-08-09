@@ -4,7 +4,7 @@ seal-check ships only public v1 artifacts. This file is the **publish gate**: th
 checklist below MUST pass before any public flip, and the flip itself is a separate,
 explicitly-authorised manual procedure (§Flip). Re-run the commands before publishing.
 
-**Current status: PASS (private). NOT PUBLISHED.** Private GitHub remote only; no GitHub Pages.
+**Current status: PASS (public). Published on GitHub; no GitHub Pages is claimed here.**
 
 ## Pinned kernel binary
 ```
@@ -86,4 +86,4 @@ by the owner after re-running the checklist. Steps, when authorised:
 5. Re-verify the live URL end-to-end (kernel pill, block/allow, replay 5/5, badge,
    conformance map).
 
-Until all five are done by the owner: **private, no remote, not published.**
+Until all five are done by the owner: **do not claim the live deployment is fully re-verified.** The repository itself is public.
