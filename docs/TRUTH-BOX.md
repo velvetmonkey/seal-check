@@ -4,8 +4,9 @@
      non-claim. The README mirrors these three lines verbatim between the same
      markers. The per-repo "Map" line is NOT part of this block (its links are
      relative in the seal umbrella, absolute here). Edit here first;
-     scripts/claims-drift.mjs enforces equality. Keep byte-identical to the
-     seal umbrella's docs/TRUTH-BOX.md. -->
+     scripts/claims-drift.mjs checks that claim blocks agree within this
+     repository. Keeping this file byte-identical to the seal umbrella's
+     docs/TRUTH-BOX.md is an unenforced, human-maintained convention. -->
 
 <!-- truthbox:begin -->
 > **Runtime profile: `compatible`.** Strict `canonical-l0` is proved and modelled, not the deployed route yet.
