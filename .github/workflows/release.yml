@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Require the tag to identify this exact commit
+        run: test "$(git rev-list -n 1 "$GITHUB_REF_NAME")" = "$GITHUB_SHA"
+      - name: Run the release gate
+        run: |
+          node --check app.js
+          node --check receipt.js
+          node test/receipt-format.test.cjs
+          node test/receipt-harness.cjs
+          node test/cross-receipt.test.cjs
+          node test/receipt-verify.test.cjs
+          node test/receipt-format-v3.test.cjs
+          node test/receipt-document.test.cjs
+          node test/unparseable-forge.test.cjs
+          node test/pathological-number.test.cjs
+          node test/verify-profile.test.cjs
+          node scripts/claims-drift.mjs
+          test -z "$(git status --porcelain)"
+      - name: Package the reproducible static-site archive and evidence
+        run: scripts/build-release.sh seal-check "$GITHUB_REF_NAME" "$RUNNER_TEMP/release"
+      - name: Publish the immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release already exists: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          notes="$RUNNER_TEMP/release-notes.md"
+          printf '%s\n' \
+            'This release provides a reproducible archive of the committed seal-check static browser site, including its prebuilt JavaScript and WebAssembly runtime files.' \
+            '' \
+            'The workflow packages those tracked files; it does not compile a new binary, re-prove the kernel, or claim the browser app or its supply chain is bug-free. See `SHA256SUMS` for the archive digest and `SEAL-RELEASE-PROVENANCE.json` for the workflow run, commit, and builder record.' > "$notes"
+          gh release create "$GITHUB_REF_NAME" \
+            "$RUNNER_TEMP/release/seal-check-$GITHUB_REF_NAME.tar.gz" \
+            "$RUNNER_TEMP/release/SHA256SUMS" \
+            "$RUNNER_TEMP/release/SEAL-RELEASE-PROVENANCE.json" \
+            --verify-tag --title "seal-check $GITHUB_REF_NAME" --notes-file "$notes"
