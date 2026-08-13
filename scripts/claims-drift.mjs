@@ -31,6 +31,7 @@ const CLAIM_MANIFEST = [
   ["docs/THREAT-MODEL.md", "Lane C runs a wasm-vs-interpreted-Lean differential in seal-host CI over a fixed corpus; it is evidence over that corpus, not a universal binary-equals-model proof."],
 ];
 
+// FAMILY-SHARED:BEGIN core
 let fatal = false;
 
 function fatalError(message) {
@@ -58,6 +59,7 @@ function extract(file, begin, end) {
   }
   return text.slice(i + begin.length, j);
 }
+// FAMILY-SHARED:END core
 
 // Per-line trim + drop blanks; strip any HTML <pre> wrapper. The claim text
 // itself contains no HTML entities or tags, so tag-stripping is safe.
@@ -71,6 +73,7 @@ function normalise(block) {
     .join("\n");
 }
 
+// FAMILY-SHARED:BEGIN evaluation
 let drift = false;
 for (const blk of BLOCKS) {
   const canonicalBlock = extract(blk.canonical, blk.begin, blk.end);
@@ -125,3 +128,4 @@ if (fatal) {
 if (!drift && !fatal) {
   console.log("all claim blocks in sync across all surfaces");
 }
+// FAMILY-SHARED:END evaluation
