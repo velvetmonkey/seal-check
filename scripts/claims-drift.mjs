@@ -75,6 +75,7 @@ function normalise(block) {
 
 // FAMILY-SHARED:BEGIN evaluation
 let drift = false;
+if (CLAIM_MANIFEST.length === 0) fatalError("ERROR  CLAIM_MANIFEST must contain at least one claim");
 for (const blk of BLOCKS) {
   const canonicalBlock = extract(blk.canonical, blk.begin, blk.end);
   const canonical = canonicalBlock === null ? null : normalise(canonicalBlock);
