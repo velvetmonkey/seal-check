@@ -31,23 +31,30 @@ const CLAIM_MANIFEST = [
   ["docs/THREAT-MODEL.md", "Lane C runs a wasm-vs-interpreted-Lean differential in seal-host CI over a fixed corpus; it is evidence over that corpus, not a universal binary-equals-model proof."],
 ];
 
+let fatal = false;
+
+function fatalError(message) {
+  fatal = true;
+  console.error(message);
+}
+
 function extract(file, begin, end) {
   let text;
   try {
     text = readFileSync(resolve(ROOT, file), "utf8");
   } catch (e) {
-    console.error(`ERROR  ${file}: ${e.message}`);
-    process.exit(2);
+    fatalError(`ERROR  ${file}: ${e.message}`);
+    return null;
   }
   const i = text.indexOf(begin);
   const j = text.indexOf(end);
   if (i === -1 || j === -1 || j < i) {
-    console.error(`ERROR  ${file}: markers missing or malformed (need ${begin} ... ${end})`);
-    process.exit(2);
+    fatalError(`ERROR  ${file}: markers missing or malformed (need ${begin} ... ${end})`);
+    return null;
   }
   if (text.indexOf(begin, i + 1) !== -1 || text.indexOf(end, j + 1) !== -1) {
-    console.error(`ERROR  ${file}: multiple ${begin} pairs — exactly one region per file`);
-    process.exit(2);
+    fatalError(`ERROR  ${file}: multiple ${begin} pairs — exactly one region per file`);
+    return null;
   }
   return text.slice(i + begin.length, j);
 }
@@ -66,13 +73,19 @@ function normalise(block) {
 
 let drift = false;
 for (const blk of BLOCKS) {
-  const canonical = normalise(extract(blk.canonical, blk.begin, blk.end));
+  const canonicalBlock = extract(blk.canonical, blk.begin, blk.end);
+  const canonical = canonicalBlock === null ? null : normalise(canonicalBlock);
   if (!canonical) {
-    console.error(`ERROR  ${blk.canonical}: canonical block is empty`);
-    process.exit(2);
+    if (canonical !== null) {
+      fatalError(`ERROR  ${blk.canonical}: canonical block is empty`);
+    }
+    for (const file of blk.mirrors) extract(file, blk.begin, blk.end);
+    continue;
   }
   for (const file of blk.mirrors) {
-    const got = normalise(extract(file, blk.begin, blk.end));
+    const mirrorBlock = extract(file, blk.begin, blk.end);
+    if (mirrorBlock === null) continue;
+    const got = normalise(mirrorBlock);
     if (got === canonical) {
       console.log(`PASS  ${file} matches ${blk.canonical}`);
       continue;
@@ -94,13 +107,21 @@ for (const blk of BLOCKS) {
 for (const [file, claim] of CLAIM_MANIFEST) {
   let text;
   try { text = readFileSync(resolve(ROOT, file), "utf8"); }
-  catch (e) { console.error(`ERROR  ${file}: ${e.message}`); process.exit(2); }
+  catch (e) {
+    fatalError(`ERROR  claim manifest entry ${file}: ${e.message}`);
+    continue;
+  }
   if (text.includes(claim)) console.log(`PASS  ${file} contains repaired claim`);
   else { drift = true; console.error(`FAIL  ${file} missing repaired claim: ${claim}`); }
 }
 
 if (drift) {
   console.error("\nCLAIMS DRIFT — edit the canonical file first, then mirror verbatim.");
-  process.exit(1);
+  if (!fatal) process.exitCode = 1;
 }
-console.log("all claim blocks in sync across all surfaces");
+if (fatal) {
+  process.exitCode = 2;
+}
+if (!drift && !fatal) {
+  console.log("all claim blocks in sync across all surfaces");
+}
