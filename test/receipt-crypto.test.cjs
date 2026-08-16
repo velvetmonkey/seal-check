@@ -26,11 +26,7 @@ test("decision receipt: a genuinely bad signature is signature_invalid", async (
   const { verifyConfigSignature } = await import("file://" + path.join(ROOT, "receipt.js"));
   const bad = { ...fixture.signed_config, signature:
     (fixture.signed_config.signature[0] === "0" ? "1" : "0") + fixture.signed_config.signature.slice(1) };
-  const webcrypto = { subtle: {
-    importKey: async () => ({}),
-    verify: async () => false,
-  } };
-  const result = await verifyConfigSignature(bad, { webcrypto });
+  const result = await verifyConfigSignature(bad);
   assert.deepEqual(result, {
     ok: false, code: "signature_invalid", verifier: "webcrypto",
     webcrypto: "available",
