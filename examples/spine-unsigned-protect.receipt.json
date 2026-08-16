@@ -1,0 +1,6 @@
+{
+  "receipt": "seal.spine/v1", "at": 1786873246373, "decision": "INPUT_REQUIRED", "tool": "demo.mutate",
+  "arguments": { "line": "unsigned protect receipt" },
+  "child": { "argv": ["/usr/bin/node", "/home/monkey/src/seal/bin/seal", "__demo-server", "/home/monkey/scratch/spineverify/protect.Zb3Pwc/data.txt"] },
+  "requestState": "seal-rs1.fb8aa9771cdf1740a427d46f619e4c88c56ecffdbcdb1a6edbdb3ac854600e96"
+}

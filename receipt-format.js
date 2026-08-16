@@ -284,8 +284,27 @@ const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 // record is judged under. Repetition or an escaped spelling of ANY of these in
 // the received text is fatal.
 export const DISCRIMINATOR_KEYS = [
-  "seal_receipt", "record_type", "record_version", "seal_live_receipt", "seal_check_receipt",
+  "seal_receipt", "record_type", "record_version", "seal_live_receipt", "seal_check_receipt", "receipt",
 ];
+
+// Artifact-family router for the page's front door.  `seal.spine/v1` is a
+// distinct, signed artifact family; it is deliberately not made to look like
+// a decision receipt.  Callers send `spine` to spine-receipt.js and
+// `decision` to the existing decision-receipt path.  Anything ambiguous or
+// unknown is refused rather than guessed.
+export function receiptFamily(record) {
+  if (!isObj(record)) return { family: "not_a_receipt" };
+  const decision = record.seal_receipt !== undefined || record.record_type !== undefined ||
+    record.record_version !== undefined || record.seal_live_receipt !== undefined ||
+    record.seal_check_receipt !== undefined;
+  const spine = record.receipt !== undefined;
+  if (decision && spine) return { family: "ambiguous" };
+  if (spine) return record.receipt === "seal.spine/v1"
+    ? { family: "spine" }
+    : { family: "unknown_format", format: record.receipt };
+  if (decision) return { family: "decision" };
+  return { family: "not_a_receipt" };
+}
 
 // A structure-aware JSON reader. NOT a regex over the text: a string that
 // looks like `"record_version"` can legitimately appear inside a VALUE (a
@@ -514,12 +533,13 @@ function validateParsedReceipt(r, opts = {}) {
   if ("authority_trusted" in r)
     errors.push("authority_trusted: verifier-computed only; forbidden in a receipt");
 
-  // A version is claimed through exactly ONE of four discriminator key
-  // families — six recognized version claims in total:
+  // A version is claimed through exactly ONE of five discriminator key
+  // families — six decision-receipt claims plus the distinct spine family:
   //   1. seal_receipt                  ("v1" | "v2" — fleet JS producers)
   //   2. record_type + record_version  (host records: 2 → v2, 3 → v3)
   //   3. seal_live_receipt             ("v0" — grandfathered live demo)
   //   4. seal_check_receipt            (legacy Schema K, always refused)
+  //   5. receipt                       (seal.spine/v1; routed elsewhere)
   // A record presenting keys from MORE THAN ONE family is MALFORMED and is
   // refused before any classification: it is not a v2 record and not a v3
   // record; it is a document trying to be classified favourably. Concretely,
@@ -541,6 +561,7 @@ function validateParsedReceipt(r, opts = {}) {
     discFamilies.push("record_type/record_version");
   if (r.seal_live_receipt !== undefined) discFamilies.push("seal_live_receipt");
   if (r.seal_check_receipt !== undefined) discFamilies.push("seal_check_receipt");
+  if (r.receipt !== undefined) discFamilies.push("receipt");
   if (discFamilies.length > 1) {
     return { ok: false, version: null,
       errors: [`conflicting version discriminators: ${discFamilies.join(" + ")} — a record claiming more than one schema version is malformed and refused (fail closed, §12.0)`] };
