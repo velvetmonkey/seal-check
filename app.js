@@ -81,6 +81,11 @@ async function boot() {
       await ready();
       renderBadge();
       await maybeRenderDeepLinkedReceipt();
+      // No receipt in the link: show the thing working rather than an empty
+      // box. The result is watermarked as a demo inside the result area.
+      if (!new URLSearchParams(location.hash.slice(1)).get("receipt")) {
+        await demoReceipt(false, { auto: true });
+      }
     } else {
       LOCKED = true;
       pill.className = "pill pill-bad";
@@ -349,9 +354,12 @@ function rvLine(okFlag, text) {
 }
 // The large first-screen verdict of the re-check. Presentation only: it renders
 // an outcome that verifyReceipt already computed; nothing is decided here.
-function paintBanner(state, headline, subline, failItems) {
+function paintBanner(state, headline, subline, failItems, { demo = false } = {}) {
   const banner = $("rv-banner");
   banner.className = "rv-banner " + state;
+  // Demo marking lives INSIDE the banner so a screenshot cropped to the
+  // verdict still carries it. A heading above would be the first thing cropped.
+  $("rv-demo-band").classList.toggle("hidden", !demo);
   $("rv-headline").textContent =
     (state === "ok" ? "✓ " : state === "bad" ? "✗ " : "! ") + headline;
   $("rv-subline").textContent = subline;
@@ -383,6 +391,115 @@ function plainFailures(r) {
   if (f.length === 0) f.push("open the technical view below for the exact comparison that failed");
   return f;
 }
+// Three-state comparison table. Every row is exactly one of: checked-passed,
+// checked-FAILED, or NOT CHECKED with the reason and what WOULD check it.
+// Presentation only — every cell restates a field verifyReceipt computed. The
+// last rows are NOT CHECKED in every state, on purpose: this table must never
+// be able to render all green, and authority never renders as a green tick.
+function renderCheckTable(r, receipt) {
+  const tbl = $("rv-table");
+  const tb = tbl.querySelector("tbody");
+  tb.replaceChildren();
+  const row = (what, state, detail) => {
+    const tr = el("tr", state === "fail" ? "rvt-row-fail" : null);
+    const stateText = state === "pass" ? "✓ checked — passed"
+      : state === "fail" ? "✗ checked — FAILED" : "— NOT CHECKED";
+    tr.append(el("td", null, what), el("td", "rvt-state rvt-" + state, stateText),
+      el("td", "rvt-detail", detail));
+    tb.append(tr);
+  };
+  const sha12 = (s) => (typeof s === "string" ? s.slice(0, 12) + "…" : "?");
+
+  // decision software
+  if (r.kernelShaMatch === true) row("Decision software (kernel)", "pass",
+    `the binary that decided is the audited kernel this page self-verified (sha256 ${sha12(r.kernelSha)})`);
+  else row("Decision software (kernel)", "fail",
+    "the receipt names a different kernel binary than the one this page verified");
+
+  // the request
+  if (r.requestHashMatch === true) row("The request", "pass",
+    `the request text matches the receipt's own fingerprint (${sha12(receipt.canonical_request_sha256)})`);
+  else if (r.requestHashMatch === false) row("The request", "fail",
+    "the request written in the receipt no longer matches the receipt's own fingerprint of it");
+  else row("The request", "skip",
+    r.unparseableRequest
+      ? "the original wire line could not be re-parsed, so no canonical re-derivation is possible; the raw line hash (request_sha256) is the only request identity carried. A receipt with a parseable request would check this."
+      : "no request comparison ran for this receipt");
+
+  // policy binding
+  if (r.bindingOk === true) row("Policy binding", "pass",
+    "the policy displayed in the receipt byte-equals the policy bytes that were signed");
+  else if (r.bindingOk === false) row("Policy binding", "fail",
+    (r.bindingErrors || []).join("; ") || "the displayed policy does not match the signed bytes");
+  else row("Policy binding", "skip", "binding was not evaluated for this receipt");
+
+  // signature — surfaces WHICH verifier ran (WebCrypto or the vendored TweetNaCl)
+  const sigAttempted = r.bindingOk === true && (r.grantErrors || []).length === 0;
+  if (!sigAttempted) row("Signature", "skip",
+    "not reached — the signature is verified over the signed policy bytes, and an earlier check failed first; fixing it would let this run");
+  else if (r.signature_valid === true) row("Signature", "pass",
+    `valid — verified by ${r.signature_verifier === "tweetnacl" ? "the shipped TweetNaCl verifier (WebCrypto had no Ed25519 here)" : r.signature_verifier === "webcrypto" ? "WebCrypto Ed25519" : "the kernel's own config check"}. A valid signature shows the receipt is exactly what Seal on that machine signed and has not changed since. It does NOT show the decision it describes actually happened — see the last rows.`);
+  else if (r.signature_status === "crypto_unavailable") row("Signature", "skip",
+    `${r.cryptoUnavailableReason || "no Ed25519 verifier was available"}. Opening this page over https (or any context with a verifier) would check it.`);
+  else row("Signature", "fail",
+    "the signature does not verify — the receipt is not what was signed");
+
+  // decision replay
+  if (r.verdictMatch === true) row("Decision replay", "pass",
+    `re-ran the exact request through the kernel on your device: same decision (${r.rederived === "BLOCK" ? "REFUSED" : r.rederived})`);
+  else if (r.verdictMatch === false) row("Decision replay", "fail",
+    `re-running the same request gives a different decision (${r.rederived === "BLOCK" ? "REFUSED" : r.rederived}) than the receipt claims`);
+  else row("Decision replay", "skip",
+    r.unparseableRequest
+      ? "an unparseable-request receipt carries no (tool, arguments) to replay; a parseable request would check it"
+      : r.rederiveError
+        ? `not reached — ${r.rederiveError}; a receipt passing the earlier checks would let the replay run`
+        : "this receipt carries nothing to replay against");
+
+  // emitted bytes
+  if (r.emittedBytesMatch === true) row("Decision output bytes", "pass",
+    "the kernel's emitted bytes are byte-identical to the re-run");
+  else if (r.emittedBytesMatch === false) row("Decision output bytes", "fail",
+    "the kernel's recorded output bytes differ from the re-run");
+  else row("Decision output bytes", "skip",
+    "not reached — the replay did not run, so there is nothing to compare the recorded bytes against");
+
+  // kernel's own request commitment
+  if (r.kernelRequestBinding === true) row("Kernel's request commitment", "pass",
+    "the kernel's own hash of the bytes it judged matches the request this receipt claims");
+  else if (r.kernelRequestBinding === false) row("Kernel's request commitment", "fail",
+    "the kernel's own record of what it judged does not match the request the receipt claims");
+  else row("Kernel's request commitment", "skip",
+    "not reached — depends on the kernel material checks above");
+
+  // kernel material consistency (only meaningful on unparseable receipts)
+  if (r.kernelMaterialConsistent === true) row("Kernel material consistency", "pass",
+    "the audit embedded in emitted_bytes names the same verdict and certs the receipt asserts");
+  else if (r.kernelMaterialConsistent === false) row("Kernel material consistency", "fail",
+    "the kernel material inside the receipt disagrees with itself");
+
+  // received document bytes
+  if (r.document_checked === true) row("Received document bytes", "pass",
+    "the raw received text was validated, including the wire ambiguities JSON parsing collapses");
+  else row("Received document bytes", "skip",
+    "this record was handed over as an already-parsed object (it was minted in this page), so no received bytes exist to examine. Opening it from a #receipt= link would check them.");
+
+  // authority — NEVER a green tick (Ben's ruling): unpinned is NOT CHECKED.
+  if (r.authority_trusted === false) row("Who signed it (authority)", "fail",
+    "the receipt is signed by a key this deployment was told not to accept as the operator's");
+  else if (r.authority_trusted === true) row("Who signed it (authority)", "skip",
+    "checked against a supplied operator pin and it matches — but browser deployments normally pin nothing, so treat authority as established out-of-band, not here");
+  else row("Who signed it (authority)", "skip",
+    `no operator key is pinned in this deployment. Comparing the signing key (${receipt && receipt.signed_config && receipt.signed_config.pubkey ? receipt.signed_config.pubkey : "unknown"}) with the key your operator publishes, out-of-band, would check it.`);
+
+  // permanently out of scope — these rows keep the table honest in every state
+  row("That the decision actually happened", "skip",
+    "this page cannot see the system that produced the receipt: it cannot tell whether the request was really routed through the gate, or what happened after. Only that system's own records could check this.");
+  row("That approved targets deserved approval", "skip",
+    "by design — approval targets travel as opaque commitments (fire-your-own-target), so this page does not check that they point at anything the operator's policy authorized. Only an audit of the operator's policy could check what they bind to.");
+
+  tbl.classList.remove("hidden");
+}
 // Receipt scenario: focus the page on the receipt, hide the interactive wedge UI.
 function focusReceiptMode() {
   $("receipt-verify").classList.remove("hidden");
@@ -391,10 +508,15 @@ function focusReceiptMode() {
   }
   const tag = document.querySelector("header .tag");
   if (tag) tag.classList.add("hidden");
+  // Compact the header: the deep-link visitor gets the answer first, not a
+  // branding block. The no-backend promise is restated inside the section.
+  document.body.classList.add("receipt-mode");
 }
 function showReceiptError(msg, focus = true) {
   if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
   paintBanner("bad", "This receipt could not be read", msg);
+  $("rv-table").classList.add("hidden");
+  $("rv-verdict-demo").classList.add("hidden");
   const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
   $("rv-tech").open = true;
 }
@@ -422,6 +544,8 @@ function renderControlReceipt(receipt) {
       ? `The same request the gate refuses went straight through, and ${ex0.rows_affected} rows were destroyed. `
       : "The same request the gate refuses went straight through. ") +
     "This record exists to show what happens without the gate.");
+  $("rv-table").classList.add("hidden");
+  $("rv-verdict-demo").classList.add("hidden");
   $("rv-tech").open = true;
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = "NO GATE";
@@ -443,9 +567,10 @@ function renderControlReceipt(receipt) {
 // `input` is the received receipt DOCUMENT (raw JSON text) for anything that
 // arrived from a link, or a minted receipt object for the local demo. §12.6:
 // the text form is the one that can be checked against the bytes.
-async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
+async function renderVerifiedReceipt(input, { focus = true, note = "", demo = false, scroll = true } = {}) {
   if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
   $("rv-tech").open = false; // re-opened below for states that demand a close look
+  $("rv-verdict-demo").classList.toggle("hidden", !demo);
   let r;
   try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
   const receipt = r.receipt;
@@ -557,30 +682,36 @@ async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
     ? receipt.signed_config.pubkey.slice(0, 12) + "…" : "an unknown key";
   if (r.outcome === "authorised") {
     paintBanner("ok", "This receipt checks out",
-      "Re-checked on your device just now: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and it is signed by the pinned operator key.");
+      "Re-checked on your device just now: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and it is signed by the pinned operator key.",
+      null, { demo });
   } else if (r.outcome === "authorised-unparseable") {
     paintBanner("warn", "Signed and intact — but only partly re-checkable",
-      "The signature is valid (pinned operator key) and everything the receipt carries verifies, but the original request line could not be re-parsed, so this page could not independently re-run the decision. The verdict rests on the kernel material the receipt carries, not on an independent replay.");
+      "The signature is valid (pinned operator key) and everything the receipt carries verifies, but the original request line could not be re-parsed, so this page could not independently re-run the decision. The verdict rests on the kernel material the receipt carries, not on an independent replay.",
+      null, { demo });
   } else if (r.outcome === "unpinned") {
     paintBanner("warn", "Intact — but the signer is not verified",
-      `Every content check passed: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and the signature is valid. What this page cannot establish is who holds the signing key (${pub12}) — no operator key is pinned in this deployment, so confirm that key out-of-band before treating this as your operator's receipt.`);
+      `Every content check passed: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and the signature is valid. What this page cannot establish is who holds the signing key (${pub12}) — no operator key is pinned in this deployment, so confirm that key out-of-band before treating this as your operator's receipt.`,
+      null, { demo });
   } else if (r.outcome === "unverified-document") {
     paintBanner("warn", "All local checks passed — but this is not a verified document",
-      "This record was minted inside this page a moment ago, so there are no received bytes to examine. Anything that arrives from outside — a link, a file — is verified as its raw text; a record handed over as an already-parsed object can never rank higher than this.");
+      "This record was minted inside this page a moment ago, so there are no received bytes to examine. Anything that arrives from outside — a link, a file — is verified as its raw text; a record handed over as an already-parsed object can never rank higher than this.",
+      null, { demo });
   } else if (r.outcome === "crypto_unavailable") {
     paintBanner("bad", "Could not check the signature",
-      `${r.cryptoUnavailableReason || "No signature verifier is available in this browser."} Without a signature check this receipt cannot be called verified.`);
+      `${r.cryptoUnavailableReason || "No signature verifier is available in this browser."} Without a signature check this receipt cannot be called verified.`,
+      null, { demo });
     $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
     $("rv-tech").open = true;
   } else {
     paintBanner("bad", "This receipt does NOT check out",
       "At least one re-check failed on your device, so what this receipt says cannot be trusted. Treat it with suspicion. What does not line up:",
-      plainFailures(r));
+      plainFailures(r), { demo });
     $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
     $("rv-tech").open = true;
   }
 
-  $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
+  renderCheckTable(r, receipt);
+  if (scroll) $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function maybeRenderDeepLinkedReceipt() {
@@ -594,7 +725,7 @@ async function maybeRenderDeepLinkedReceipt() {
 
 // Demo the deep-link flow without a link: build a real receipt through the
 // kernel, optionally tamper with it, and push it through the same verifier UI.
-async function demoReceipt(tamper) {
+async function demoReceipt(tamper, { auto = false } = {}) {
   const status = $("demo-receipt-status");
   if (LOCKED) { status.textContent = "kernel not verified — demo disabled."; return; }
   status.textContent = "";
@@ -605,9 +736,13 @@ async function demoReceipt(tamper) {
     if (tamper) receipt.verdict = receipt.verdict === "ALLOW" ? "BLOCK" : "ALLOW";
     await renderVerifiedReceipt(receipt, {
       focus: false,
+      demo: true,
+      scroll: !auto, // the on-load demo must not yank the page down
       note: tamper
         ? "Demo: this receipt was deliberately tampered with (verdict flipped) — verification must fail."
-        : "Demo: a genuine receipt, built by this page's kernel a moment ago.",
+        : auto
+          ? "No receipt link was supplied, so this is the built-in demo: a genuine receipt built by this page's kernel just now."
+          : "Demo: a genuine receipt, built by this page's kernel a moment ago.",
     });
   } catch (e) {
     status.textContent = "demo error: " + e.message;
