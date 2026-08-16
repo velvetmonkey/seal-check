@@ -9,6 +9,7 @@
 // (seal_live_receipt) per docs/DECISION-RECEIPT-SCHEMA.md; legacy
 // Schema K objects are rejected with the spec's regenerate error.
 import { decideSignedRaw, verifyKernelSha } from "./kernel.js";
+import nacl from "./vendor/nacl.js";
 import {
   HOST_AUDIT_VERDICT_MAP,
   canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, sha256Hex, validateReceipt,
@@ -32,18 +33,47 @@ export const VERIFY_PROFILE = "P-ENFORCE";
 // Ed25519 over the exact signed_config payload bytes — the same check
 // seal_init performs, done directly because the kernel cannot be invoked
 // without a parseable call.
-async function verifyConfigSignature(sc) {
-  try {
-    if (typeof sc.pubkey !== "string" || typeof sc.signature !== "string" ||
-        typeof sc.payload !== "string") return false;
-    const bytes = (hex) => Uint8Array.from(hex.match(/../g), (b) => parseInt(b, 16));
-    const key = await globalThis.crypto.subtle.importKey(
-      "raw", bytes(sc.pubkey), { name: "Ed25519" }, false, ["verify"]);
-    return await globalThis.crypto.subtle.verify(
-      "Ed25519", key, bytes(sc.signature), new TextEncoder().encode(sc.payload));
-  } catch {
-    return false;
+export async function verifyConfigSignature(sc, {
+  webcrypto = globalThis.crypto, naclVerify = nacl.sign.detached.verify,
+} = {}) {
+  if (!sc || typeof sc.pubkey !== "string" || !/^[0-9a-f]{64}$/.test(sc.pubkey) ||
+      typeof sc.signature !== "string" || !/^[0-9a-f]{128}$/.test(sc.signature) ||
+      typeof sc.payload !== "string") {
+    return { ok: false, code: "signature_invalid", verifier: null, webcrypto: "not_checked" };
   }
+  const bytes = (hex) => Uint8Array.from(hex.match(/../g), (b) => parseInt(b, 16));
+  const publicKey = bytes(sc.pubkey);
+  const signature = bytes(sc.signature);
+  const message = new TextEncoder().encode(sc.payload);
+  if (webcrypto && webcrypto.subtle) {
+    try {
+      const key = await webcrypto.subtle.importKey(
+        "raw", publicKey, { name: "Ed25519" }, false, ["verify"]);
+      const ok = await webcrypto.subtle.verify("Ed25519", key, signature, message);
+      return { ok, code: ok ? "verified" : "signature_invalid", verifier: "webcrypto",
+        webcrypto: "available" };
+    } catch (error) {
+      // Match the spine verifier: SubtleCrypto without Ed25519 is not a bad
+      // signature. The shipped TweetNaCl verifier performs the real detached
+      // verification instead; only the absence of both verifiers is refused.
+      if (typeof naclVerify === "function") {
+        const ok = naclVerify(message, signature, publicKey);
+        return { ok, code: ok ? "verified" : "signature_invalid", verifier: "tweetnacl",
+          webcrypto: error?.name === "NotSupportedError" ? "ed25519_unsupported" : "ed25519_unavailable",
+          fallback: "crypto_unavailable" };
+      }
+      return { ok: false, code: "crypto_unavailable", verifier: null,
+        webcrypto: error?.name === "NotSupportedError" ? "ed25519_unsupported" : "ed25519_unavailable",
+        reason: `WebCrypto Ed25519 is unavailable: ${error.message}; open this page over https` };
+    }
+  }
+  if (typeof naclVerify === "function") {
+    const ok = naclVerify(message, signature, publicKey);
+    return { ok, code: ok ? "verified" : "signature_invalid", verifier: "tweetnacl",
+      webcrypto: "absent", fallback: "crypto_unavailable" };
+  }
+  return { ok: false, code: "crypto_unavailable", verifier: null, webcrypto: "absent",
+    reason: "WebCrypto is unavailable and no Ed25519 verifier is available; open this page over https" };
 }
 
 // The kernel material an unparseable-request receipt carries must at least
@@ -138,7 +168,7 @@ export function decodeReceiptParam() {
 // those three fields — and every shipped consumer does — is therefore unable
 // to mistake an object-path result for a verified wire receipt even if it
 // never reads document_checked.
-export async function verifyReceipt(input, { expectedConfigPubkey } = {}) {
+export async function verifyReceipt(input, { expectedConfigPubkey, cryptoOptions } = {}) {
   // 0. Shape first: document-level ambiguity, version discriminator, field
   //    table, hard-split rule, stored-line-vs-derived-line equality. A
   //    malformed receipt never reaches the kernel.
@@ -264,7 +294,13 @@ export async function verifyReceipt(input, { expectedConfigPubkey } = {}) {
   if (out.unparseableRequest) {
     out.replayUnavailable = "unparseable-request receipt — no (tool, arguments) to replay";
     if (out.bindingOk && grants.errors.length === 0 && signedConfig) {
-      out.signature_valid = await verifyConfigSignature(signedConfig);
+      const signature = await verifyConfigSignature(signedConfig, cryptoOptions);
+      out.signature_valid = signature.ok;
+      out.signature_status = signature.code;
+      out.signature_verifier = signature.verifier;
+      out.webcrypto_status = signature.webcrypto;
+      out.crypto_fallback = signature.fallback;
+      if (signature.reason) out.cryptoUnavailableReason = signature.reason;
       out.config_freshness = out.signature_valid ? freshnessCandidate : null;
     }
     out.kernelMaterialConsistent = auditConsistent(receipt);
@@ -336,7 +372,9 @@ export async function verifyReceipt(input, { expectedConfigPubkey } = {}) {
   // (signature_valid, kernel_replay_consistent, authority_trusted, ...) is
   // still computed — but only the document path can say "verified".
   out.verificationCore = out.document_checked && checksPassed;
-  out.outcome = !checksPassed || out.authority_trusted === false
+  out.outcome = out.signature_status === "crypto_unavailable"
+    ? "crypto_unavailable"
+    : !checksPassed || out.authority_trusted === false
     ? "failure"
     : !out.document_checked ? "unverified-document"
     : out.authority_trusted !== true ? "unpinned"

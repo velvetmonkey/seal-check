@@ -439,8 +439,13 @@ async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
     ? "signed config bytes bind exactly to the displayed kernel_config"
     : `signed config binding failed: ${(r.bindingErrors || []).join("; ")}`));
   ul.append(rvLine(r.signature_valid, r.signature_valid
-    ? `signature_valid: signed by holder of ${receipt.signed_config.pubkey.slice(0, 12)}…`
-    : "signature_valid: false"));
+    ? `signature_valid: signed by holder of ${receipt.signed_config.pubkey.slice(0, 12)}…` +
+      (r.signature_verifier === "tweetnacl"
+        ? ` (verified by the shipped TweetNaCl fallback; WebCrypto ${r.webcrypto_status === "absent" ? "was absent" : "did not support Ed25519"})`
+        : "")
+    : r.signature_status === "crypto_unavailable"
+      ? `REFUSED crypto_unavailable: ${r.cryptoUnavailableReason}`
+      : "signature_invalid: the signature does not verify"));
   if (r.unparseableRequest) {
     ul.append(rvLine(null, "verdict not re-derivable: an unparseable-request receipt carries no (tool, arguments) to replay"));
     ul.append(rvLine(r.kernelMaterialConsistent, r.kernelMaterialConsistent
@@ -489,6 +494,9 @@ async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
     // page; never a verified wire receipt.
     s.textContent = "LOCAL OBJECT (unverified-document): every local check passed, but this record was handed to the verifier as an already-parsed object, so no received document bytes were examined. That is expected for a receipt minted in this page. Anything that arrived from outside must be verified as its raw text.";
     s.className = "reason warn";
+  } else if (r.outcome === "crypto_unavailable") {
+    s.textContent = `REFUSED crypto_unavailable: ${r.cryptoUnavailableReason}`;
+    s.className = "reason bad";
   } else {
     s.textContent = "One or more checks did not pass. Treat this receipt with suspicion.";
     s.className = "reason bad";
