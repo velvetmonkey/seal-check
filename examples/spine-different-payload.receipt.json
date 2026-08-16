@@ -1,0 +1,5 @@
+{
+  "receipt": "seal.spine/v1", "at": 1786873203319, "decision": "ALLOW", "tool": "demo.mutate",
+  "arguments": { "line": "seal spine demo wrote this line" },
+  "seal": { "alg": "ed25519", "decision_sha256": "25a2778c67ba986882a577479bff5aa3a854b34635d6647cdf11e08550169503", "tool_sha256": "b062f030d5c12e5eb6e8ae7bf085758df7e4a5b2ddb5c3d517d0725e16cc71f7", "args_sha256": "261de0545368b9351497bc61004e34c6fb2cd7d2bf2908f9c170dfe350a42bd6", "effect_sha256": "2b7876967eba1366d87836603d88e80cf93446cfbe8eb73fe491e7e145d3e5a4", "sig": "562b93fcf8a48fe92178fd6e76f2c2177d31eaf8c94e31605fbc80cf6a8cabb22e8b80779e5ccf56c6ec974e69206f6e543eb9ca240d90e13f20c793cf454405" }
+}
