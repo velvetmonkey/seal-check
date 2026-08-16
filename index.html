@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>seal-check: is your MCP boundary actually mediated?</title>
-  <meta name="description" content="Paste an MCP tool-call, get a deterministic Allow/Block verdict and a reproducible receipt from the verified seal kernel, entirely in your browser. No backend, no data leaves the page." />
+  <title>seal-check: re-check a seal decision receipt in your browser</title>
+  <meta name="description" content="Opened a seal receipt link? This page re-checks the decision it records, entirely in your browser, and explains what that does and does not prove. Also: paste an MCP tool-call, get a deterministic Allow/Block verdict from the verified seal kernel. No backend, no data leaves the page." />
   <link rel="stylesheet" href="style.css" />
   <!-- classic script installs window.SealModule (the compiled black-box kernel) -->
   <script src="wasm/seal.js"></script>
@@ -26,21 +26,66 @@
 
     <!-- 0. DEEP-LINKED RECEIPT (shown only when opened via #receipt=...) ----->
     <section id="receipt-verify" class="hidden">
-      <h2>Verifying a receipt</h2>
-      <p class="muted" id="rv-context"></p>
+      <h2>Your receipt, re-checked</h2>
+
+      <!-- The verdict of the re-check, first and large. Painted by app.js. -->
+      <div id="rv-banner" class="rv-banner hidden">
+        <div id="rv-headline" class="rv-headline"></div>
+        <p id="rv-subline" class="rv-subline"></p>
+        <ul id="rv-fails" class="rv-fails hidden"></ul>
+      </div>
+
+      <p class="privacy">This check ran entirely in your browser, just now. Nothing in this receipt was sent anywhere: no backend, no accounts, no telemetry.</p>
+
       <div class="result">
+        <p id="rv-context" class="rv-context"></p>
         <div class="verdict-row">
           <span id="rv-verdict" class="verdict"></span>
           <span id="rv-deny" class="deny-kernel"></span>
         </div>
-        <ul id="rv-checks" class="rv-checks"></ul>
-        <p id="rv-summary" class="reason"></p>
-        <details>
-          <summary>the receipt (raw JSON)</summary>
-          <pre id="rv-json" class="receipt"></pre>
+
+        <div class="rv-plain">
+          <h3>What am I looking at?</h3>
+          <p>You are looking at a <strong>receipt</strong>: the record of one decision. Somewhere, an AI
+            agent asked to do one specific thing — the request described above — and a piece of safety
+            software called the <strong>seal gate</strong> decided, at that moment, whether to allow it
+            or refuse it. The receipt is the gate's own signed note of that single decision, and this
+            page has just re-done the gate's arithmetic on your device to see whether the note holds up.
+            (One special kind, the <em>control</em> receipt, records the opposite: a run with the gate
+            switched off, kept to show the difference.)</p>
+        </div>
+
+        <div class="rv-limit">
+          <h3>What a passing check shows — and what it does not</h3>
+          <p>A passing check shows that the receipt <strong>has not changed since it was signed</strong>
+            and that it is internally true: feed the very same request to the very same decision
+            software and you get the very same decision, byte for byte, right here on your device.</p>
+          <p>A passing check does <strong>not</strong> show that the decision it describes
+            <strong>actually happened</strong>. This page cannot see the system that produced the
+            receipt: it cannot tell whether the request was really routed through the gate, whether the
+            gate was in the path at the time, or what happened after the decision. A receipt can be
+            perfectly intact and still describe a decision that never guarded anything real.</p>
+          <p>There is a further limit, and it is there by design. This page verifies the decision over
+            the inputs the receipt commits to — the kernel binary's hash, the fingerprint of the
+            request, the re-derived verdict, and the exact bytes the kernel emitted. It does
+            <strong>not</strong> check that approvals named in a receipt point at anything an
+            operator's policy actually authorized: approval targets travel as opaque fingerprints
+            ("commitments"), and this checker accepts receipts built around any target of the builder's
+            own choosing — "fire-your-own-target". A valid receipt proves what was decided, never that
+            the thing approved deserved approval.</p>
+        </div>
+
+        <details id="rv-tech">
+          <summary>Technical view: every check that ran, the raw receipt, and the exact scope</summary>
+          <ul id="rv-checks" class="rv-checks"></ul>
+          <p id="rv-summary" class="reason"></p>
+          <details>
+            <summary>the receipt (raw JSON)</summary>
+            <pre id="rv-json" class="receipt"></pre>
+          </details>
+          <p class="muted">Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel.</p>
+          <p class="muted">Scope: seal-check verifies the <em>decision</em> over its committed inputs (kernel binary hash, request fingerprint, re-derived verdict, emitted bytes). It does <em>not</em> check that granted capabilities correspond to a policy-authorized target — this box accepts arbitrary target commitments (fire-your-own-target), so grants are carried as opaque commitments by design.</p>
         </details>
-        <p class="muted">Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel.</p>
-        <p class="muted">Scope: seal-check verifies the <em>decision</em> over its committed inputs (kernel binary hash, request fingerprint, re-derived verdict, emitted bytes). It does <em>not</em> check that granted capabilities correspond to a policy-authorized target — this box accepts arbitrary target commitments (fire-your-own-target), so grants are carried as opaque commitments by design.</p>
       </div>
     </section>
 

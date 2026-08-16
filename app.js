@@ -347,6 +347,42 @@ function rvLine(okFlag, text) {
   li.textContent = (okFlag === true ? "✓ " : okFlag === false ? "✗ " : "• ") + text;
   return li;
 }
+// The large first-screen verdict of the re-check. Presentation only: it renders
+// an outcome that verifyReceipt already computed; nothing is decided here.
+function paintBanner(state, headline, subline, failItems) {
+  const banner = $("rv-banner");
+  banner.className = "rv-banner " + state;
+  $("rv-headline").textContent =
+    (state === "ok" ? "✓ " : state === "bad" ? "✗ " : "! ") + headline;
+  $("rv-subline").textContent = subline;
+  const ul = $("rv-fails");
+  ul.textContent = "";
+  if (failItems && failItems.length) {
+    for (const t of failItems) ul.append(el("li", null, t));
+    ul.classList.remove("hidden");
+  } else {
+    ul.classList.add("hidden");
+  }
+}
+// Plain-language restatement of checks that FAILED, read from fields
+// verifyReceipt has already computed. Strict === false tests only: null and
+// undefined mean "not applicable", never a failure.
+function plainFailures(r) {
+  const f = [];
+  if (r.formatOk === false) f.push("the receipt does not have the shape a real receipt must have (schema validation failed)");
+  if (r.kernelShaMatch === false) f.push("the decision software named in the receipt is not the verified kernel this page runs");
+  if (r.requestHashMatch === false) f.push("the request written in the receipt no longer matches the receipt's own fingerprint of it");
+  if (r.bindingOk === false) f.push("the policy displayed in the receipt does not match the policy bytes that were signed");
+  if (r.grantErrors && r.grantErrors.length > 0) f.push("the receipt's approval grants could not be resolved against its signed policy");
+  if (r.signature_valid === false && r.signature_status !== "crypto_unavailable") f.push("the signature does not match the receipt — something changed after it was signed");
+  if (r.verdictMatch === false) f.push(`re-running the same request through the same kernel gives a different decision (${r.rederived === "BLOCK" ? "REFUSED" : r.rederived}) than the receipt claims`);
+  if (r.emittedBytesMatch === false) f.push("the kernel's recorded output bytes differ from the re-run");
+  if (r.kernelMaterialConsistent === false) f.push("the kernel material inside the receipt disagrees with itself");
+  if (r.kernelRequestBinding === false) f.push("the kernel's own record of what it judged does not match the request the receipt claims");
+  if (r.authority_trusted === false) f.push("the receipt is signed by a key this deployment does not accept as the operator's");
+  if (f.length === 0) f.push("open the technical view below for the exact comparison that failed");
+  return f;
+}
 // Receipt scenario: focus the page on the receipt, hide the interactive wedge UI.
 function focusReceiptMode() {
   $("receipt-verify").classList.remove("hidden");
@@ -358,7 +394,9 @@ function focusReceiptMode() {
 }
 function showReceiptError(msg, focus = true) {
   if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
+  paintBanner("bad", "This receipt could not be read", msg);
   const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
+  $("rv-tech").open = true;
 }
 
 // HTML fragment describing the mediated call — demo receipts keep their
@@ -377,6 +415,14 @@ function callSummaryHtml(receipt) {
 // The control receipt: seal was switched OFF (bypass), so there is no kernel
 // decision to verify. Render it honestly, NOT as a passed verification.
 function renderControlReceipt(receipt) {
+  const ex0 = receipt.execution || {};
+  paintBanner("bad", "No gate stood here",
+    "This is the control receipt: the seal gate was switched OFF for this run, so nothing decided anything. " +
+    (ex0.executed
+      ? `The same request the gate refuses went straight through, and ${ex0.rows_affected} rows were destroyed. `
+      : "The same request the gate refuses went straight through. ") +
+    "This record exists to show what happens without the gate.");
+  $("rv-tech").open = true;
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = "NO GATE";
   verdictNode.className = "verdict v-block";
@@ -399,6 +445,7 @@ function renderControlReceipt(receipt) {
 // the text form is the one that can be checked against the bytes.
 async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
   if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
+  $("rv-tech").open = false; // re-opened below for states that demand a close look
   let r;
   try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
   const receipt = r.receipt;
@@ -418,8 +465,9 @@ async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
   $("rv-deny").textContent = receipt.deny_kernel ? `${receipt.deny_kernel} rule` : "";
 
   $("rv-context").innerHTML = (note ? `<strong>${escapeHtml(note)}</strong> ` : "") +
-    `An AI agent's tool-call was mediated by the seal gate: it asked to ${callSummaryHtml(receipt)}. ` +
-    `The gate's decision, re-checked below:`;
+    `What this receipt records: an AI agent asked to ${callSummaryHtml(receipt)}, and the seal gate — ` +
+    `safety software standing between the agent and the thing it wanted to touch — decided. ` +
+    `The decision on record:`;
 
   const ul = $("rv-checks"); ul.textContent = "";
   // §12.6: say plainly whether the RECEIVED BYTES were checked, or whether
@@ -501,6 +549,37 @@ async function renderVerifiedReceipt(input, { focus = true, note = "" } = {}) {
     s.textContent = "One or more checks did not pass. Treat this receipt with suspicion.";
     s.className = "reason bad";
   }
+
+  // First-screen banner: the same outcome verifyReceipt computed, said large
+  // and in plain words. The limits stated here must not shrink — signer
+  // identity and document scope included.
+  const pub12 = receipt.signed_config && typeof receipt.signed_config.pubkey === "string"
+    ? receipt.signed_config.pubkey.slice(0, 12) + "…" : "an unknown key";
+  if (r.outcome === "authorised") {
+    paintBanner("ok", "This receipt checks out",
+      "Re-checked on your device just now: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and it is signed by the pinned operator key.");
+  } else if (r.outcome === "authorised-unparseable") {
+    paintBanner("warn", "Signed and intact — but only partly re-checkable",
+      "The signature is valid (pinned operator key) and everything the receipt carries verifies, but the original request line could not be re-parsed, so this page could not independently re-run the decision. The verdict rests on the kernel material the receipt carries, not on an independent replay.");
+  } else if (r.outcome === "unpinned") {
+    paintBanner("warn", "Intact — but the signer is not verified",
+      `Every content check passed: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and the signature is valid. What this page cannot establish is who holds the signing key (${pub12}) — no operator key is pinned in this deployment, so confirm that key out-of-band before treating this as your operator's receipt.`);
+  } else if (r.outcome === "unverified-document") {
+    paintBanner("warn", "All local checks passed — but this is not a verified document",
+      "This record was minted inside this page a moment ago, so there are no received bytes to examine. Anything that arrives from outside — a link, a file — is verified as its raw text; a record handed over as an already-parsed object can never rank higher than this.");
+  } else if (r.outcome === "crypto_unavailable") {
+    paintBanner("bad", "Could not check the signature",
+      `${r.cryptoUnavailableReason || "No signature verifier is available in this browser."} Without a signature check this receipt cannot be called verified.`);
+    $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
+    $("rv-tech").open = true;
+  } else {
+    paintBanner("bad", "This receipt does NOT check out",
+      "At least one re-check failed on your device, so what this receipt says cannot be trusted. Treat it with suspicion. What does not line up:",
+      plainFailures(r));
+    $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
+    $("rv-tech").open = true;
+  }
+
   $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
