@@ -9,6 +9,9 @@ import { CORPUS } from "./corpus.js";
 import { b64urlToStr, verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
 import { classifyReceiptFragment } from "./fragment-classifier.js";
+import { renderPageClaims } from "./page-claims.js";
+import { pastedReceiptDocumentOrError } from "./receipt-input.js";
+import { clearReceiptSummary, renderReceiptSummary } from "./receipt-summary.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -177,6 +180,7 @@ async function runInput() {
   paintVerdict($("verdict"), $("deny-kernel"), res.parsed);
   $("reason").textContent = res.parsed.reason;
   renderWitness(res.parsed);
+  renderReceiptSummary($("receipt-summary"), receipt);
   $("receipt").textContent = canonicalReceiptJson(receipt);
   renderSpec(receipt);
   $("determinism").textContent = "";
@@ -524,6 +528,7 @@ function showReceiptError(msg, focus = true, { isExample = false } = {}) {
 // state. It cannot survive a visitor result merely because an example painted
 // it earlier.
 function paintReceiptState(isExample) {
+  clearReceiptSummary($("receipt-summary"));
   $("rv-example-label")?.remove();
   // Result content belongs to the state that created it. Clearing every
   // mutable field at the boundary means an error can never retain an earlier
@@ -550,21 +555,30 @@ function hideReceiptResult() {
 
 // HTML fragment describing the mediated call — demo receipts keep their
 // operation-on-table phrasing, everything else falls back to tool+arguments.
-function callSummaryHtml(receipt) {
+function appendCallSummary(container, receipt) {
   const s = callSummary(receipt);
   if (s.unparseable) {
-    return `make a call whose wire line could not be re-parsed by the receipt layer ` +
-      `(§11.1; raw line sha256 <code>${escapeHtml(s.rawLineShort)}</code>)`;
+    container.append("make a call whose wire line could not be re-parsed by the receipt layer (§11.1; raw line sha256 ");
+    container.append(el("code", null, s.rawLineShort));
+    container.append(")");
+    return;
   }
-  return s.demo
-    ? `run <code>${escapeHtml(s.operation)}</code> on <code>${escapeHtml(s.table)}</code>`
-    : `call <code>${escapeHtml(s.tool)}</code> with arguments <code>${escapeHtml(s.argsJson)}</code>`;
+  if (s.demo) {
+    container.append("run ", el("code", null, s.operation), " on ", el("code", null, s.table));
+    return;
+  }
+  container.append("call ", el("code", null, s.tool), " with arguments ", el("code", null, s.argsJson));
+}
+
+function appendReceiptClaimNote(container) {
+  container.append(" ", el("em", "muted", "(as the receipt claims — not confirmed by this page)"));
 }
 
 // The control receipt: seal was switched OFF (bypass), so there is no kernel
 // decision to verify. Render it honestly, NOT as a passed verification.
 function renderControlReceipt(receipt, { isExample = false } = {}) {
   paintReceiptState(isExample);
+  renderReceiptSummary($("receipt-summary"), receipt);
   const ex0 = receipt.execution || {};
   paintBanner("bad", "No gate stood here",
     "This is the control receipt: the seal gate was switched OFF for this run, so nothing decided anything. " +
@@ -579,8 +593,10 @@ function renderControlReceipt(receipt, { isExample = false } = {}) {
   verdictNode.textContent = "NO GATE";
   verdictNode.className = "verdict v-block";
   $("rv-deny").textContent = "seal switched off (control)";
-  $("rv-context").innerHTML = `This is the <strong>control</strong> run. The gate was switched OFF, so it did not mediate the call. ` +
-    `The agent asked to ${callSummaryHtml(receipt)} — with the gate absent, nothing stood in the way.`;
+  const context = $("rv-context");
+  context.append("This is the ", el("strong", null, "control"), " run. The gate was switched OFF, so it did not mediate the call. The agent asked to ");
+  appendCallSummary(context, receipt);
+  context.append(" — with the gate absent, nothing stood in the way.");
   const ul = $("rv-checks"); ul.textContent = "";
   ul.append(rvLine(true, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…), the same request as the blocked attack`));
   ul.append(rvLine(null, "the gate was OFF, so the verified kernel did NOT run, nothing mediated this call"));
@@ -618,16 +634,17 @@ async function renderVerifiedReceipt(input, {
     return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +
       (r.formatErrors || []).join("; "), focus, { isExample });
   }
+  renderReceiptSummary($("receipt-summary"), receipt);
   $("rv-result").classList.remove("hidden");
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = receipt.verdict === "BLOCK" ? "REFUSED" : receipt.verdict === "ALLOW" ? "ALLOWED" : (receipt.verdict || "?");
   verdictNode.className = "verdict " + (receipt.verdict === "BLOCK" ? "v-block" : receipt.verdict === "ALLOW" ? "v-allow" : "v-error");
   $("rv-deny").textContent = receipt.deny_kernel ? `${receipt.deny_kernel} rule` : "";
 
-  $("rv-context").innerHTML =
-    `What this receipt records: an AI agent asked to ${callSummaryHtml(receipt)}, and the seal gate — ` +
-    `safety software standing between the agent and the thing it wanted to touch — decided. ` +
-    `The decision on record:`;
+  const context = $("rv-context");
+  context.append("What this receipt records: an AI agent asked to ");
+  appendCallSummary(context, receipt);
+  context.append(", and the seal gate — safety software standing between the agent and the thing it wanted to touch — decided. The decision on record:");
 
   const ul = $("rv-checks"); ul.textContent = "";
   // §12.6: say plainly whether the RECEIVED BYTES were checked, or whether
@@ -735,13 +752,13 @@ async function renderVerifiedReceipt(input, {
     paintBanner("bad", "Could not check the signature",
       `${r.cryptoUnavailableReason || "No signature verifier is available in this browser."} Without a signature check this receipt cannot be called verified.`,
       null);
-    $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
+    appendReceiptClaimNote(context);
     $("rv-tech").open = true;
   } else {
     paintBanner("bad", "This receipt does NOT check out",
       "At least one re-check failed on your device, so what this receipt says cannot be trusted. Treat it with suspicion. What does not line up:",
       plainFailures(r));
-    $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
+    appendReceiptClaimNote(context);
     $("rv-tech").open = true;
   }
 
@@ -846,24 +863,20 @@ async function checkPasted(version = ++locationRenderVersion) {
   if (!isCurrent()) return;
   paintReceiptState(false);
   $("paste-error").textContent = "";
-  let doc;
-  try { doc = pastedDocumentText($("paste-input").value); }
-  catch (e) {
-    if (isCurrent()) $("paste-error").textContent = "could not decode that as base64url: " + e.message;
-    return;
-  }
-  if (doc === null) { if (isCurrent()) hideReceiptResult(); return; }
+  const decoded = pastedReceiptDocumentOrError($("paste-input").value);
+  if (!decoded.ok) return showReceiptError(decoded.error);
   if (LOCKED) {
     if (isCurrent()) $("paste-error").textContent = "kernel not verified — refusing to check receipts.";
     return;
   }
-  const isExample = bundledExampleDocument !== null && doc === bundledExampleDocument;
+  const isExample = bundledExampleDocument !== null && decoded.document === bundledExampleDocument;
   paintReceiptState(isExample);
-  await renderClassifiedReceiptDocument(doc, { isExample, isCurrent });
+  await renderClassifiedReceiptDocument(decoded.document, { isExample, isCurrent });
 }
 
 // --- wire up -----------------------------------------------------------------
 function init() {
+  renderPageClaims(document);
   // Checker page: the paste box. Workbench page: the tools. Wire what exists.
   if ($("paste-input")) {
     $("paste-input").addEventListener("input", onPasteInput);

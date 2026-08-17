@@ -61,6 +61,11 @@
 
         <p class="privacy">This check ran entirely in your browser, just now. Nothing in this receipt was sent anywhere: no backend, no accounts, no telemetry.</p>
 
+        <section class="receipt-summary" aria-labelledby="receipt-summary-heading">
+          <h3 id="receipt-summary-heading">Receipt summary</h3>
+          <div id="receipt-summary"></div>
+        </section>
+
         <div class="rv-plain">
           <h3>What am I looking at?</h3>
           <p>You are looking at a <strong>receipt</strong>: the record of one decision. Somewhere, an AI
@@ -122,12 +127,7 @@
         </div>
         <div class="claim notproves">
           <h3>✗ What this does NOT prove</h3>
-          <p>It does not certify your whole MCP server, your transport, your tool implementations, or that your
-            deployment actually routes calls through this gate. The <code>sha256</code> verifies <em>which binary
-            ran</em>. It does <strong>not</strong> prove the axioms or the Lean proofs themselves. No third party
-            certifies anything here. In particular <strong>ARIA certifies nothing</strong>, no ARIA endorsement,
-            outcome, affiliation, or status is claimed or implied. This is not an endorsement and not a
-            trustworthiness badge for your server.</p>
+          <p data-claims-not-proves></p>
         </div>
       </div>
     </section>
