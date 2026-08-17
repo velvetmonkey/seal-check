@@ -89,10 +89,7 @@ async function boot() {
       pill.textContent = `kernel verified · sha256 ${SHA.computed.slice(0, 8)}…`;
       await ready();
       renderBadge();
-      if ($("paste-input")) {
-        const linked = await maybeRenderDeepLinkedReceipt();
-        if (!linked) await renderBundledExampleReceipt();
-      }
+      if ($("paste-input")) await renderLocationReceiptOrExample();
     } else {
       LOCKED = true;
       pill.className = "pill pill-bad";
@@ -516,7 +513,8 @@ function focusReceiptMode() {
   // branding block. The no-backend promise is restated inside the section.
   document.body.classList.add("receipt-mode");
 }
-function showReceiptError(msg, focus = true) {
+function showReceiptError(msg, focus = true, { isExample = false } = {}) {
+  paintReceiptState(isExample);
   if (focus) focusReceiptMode();
   $("rv-result").classList.remove("hidden");
   paintBanner("bad", "This receipt could not be read", msg);
@@ -525,17 +523,16 @@ function showReceiptError(msg, focus = true) {
   $("rv-tech").open = true;
 }
 
-// The marker belongs to the source state, not to a particular paint call.
-// Set visitor state before decoding a link too: a malformed fragment is still
-// a visitor-supplied receipt, never an example error.
-let receiptDisplayState = "visitor";
-function setReceiptDisplayState(state) {
-  receiptDisplayState = state;
-  $("rv-example-label").classList.toggle("hidden", state !== "example");
+// The marker is painted by every receipt/error render from that render's own
+// state. It cannot survive a visitor result merely because an example painted
+// it earlier.
+function paintReceiptState(isExample) {
+  $("rv-example-label").classList.toggle("hidden", !isExample);
 }
 
 // Back to the bare page: box empty, nothing result-shaped on screen.
 function hideReceiptResult() {
+  paintReceiptState(false);
   $("rv-banner").className = "rv-banner hidden";
   $("rv-result").classList.add("hidden");
 }
@@ -555,7 +552,8 @@ function callSummaryHtml(receipt) {
 
 // The control receipt: seal was switched OFF (bypass), so there is no kernel
 // decision to verify. Render it honestly, NOT as a passed verification.
-function renderControlReceipt(receipt) {
+function renderControlReceipt(receipt, { isExample = false } = {}) {
+  paintReceiptState(isExample);
   const ex0 = receipt.execution || {};
   paintBanner("bad", "No gate stood here",
     "This is the control receipt: the seal gate was switched OFF for this run, so nothing decided anything. " +
@@ -586,21 +584,22 @@ function renderControlReceipt(receipt) {
 // `input` is the received receipt DOCUMENT (raw JSON text) for anything that
 // arrived from a link, or a minted receipt object for the local demo. §12.6:
 // the text form is the one that can be checked against the bytes.
-async function renderVerifiedReceipt(input, { focus = true, scroll = true } = {}) {
+async function renderVerifiedReceipt(input, { focus = true, scroll = true, isExample = false } = {}) {
+  paintReceiptState(isExample);
   if (focus) focusReceiptMode();
   $("rv-tech").open = false; // re-opened below for states that demand a close look
   let r;
-  try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
+  try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus, { isExample }); }
   const receipt = r.receipt;
   if (!receipt) {
     return showReceiptError("receipt failed schema validation: " +
-      (r.formatErrors || []).join("; "), focus);
+      (r.formatErrors || []).join("; "), focus, { isExample });
   }
 
-  if (receipt.bypass) return renderControlReceipt(receipt);
+  if (receipt.bypass) return renderControlReceipt(receipt, { isExample });
   if (r.formatOk === false) {
     return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +
-      (r.formatErrors || []).join("; "), focus);
+      (r.formatErrors || []).join("; "), focus, { isExample });
   }
   $("rv-result").classList.remove("hidden");
   const verdictNode = $("rv-verdict");
@@ -734,13 +733,17 @@ async function renderVerifiedReceipt(input, { focus = true, scroll = true } = {}
 }
 
 async function maybeRenderDeepLinkedReceipt() {
-  setReceiptDisplayState("visitor");
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (!params.has("receipt")) return false;
   let document_;
   try { document_ = decodeReceiptDocument(); } catch (e) {
     showReceiptError("could not decode the receipt link: " + e.message);
     return true;
   }
-  if (!document_) return false;
+  if (!document_) {
+    showReceiptError("receipt link is empty — include a base64url receipt after #receipt=.");
+    return true;
+  }
   // Show the received text in the box the way any pasted receipt would appear;
   // setting .value programmatically fires no input event, so this does not
   // trigger a second verification.
@@ -753,37 +756,41 @@ async function maybeRenderDeepLinkedReceipt() {
 // takes the same raw-document parsing, classification, and verification route
 // as a receipt the visitor pasted.
 async function renderBundledExampleReceipt() {
-  setReceiptDisplayState("example");
   try {
     const response = await fetch(BUNDLED_EXAMPLE_RECEIPT);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     $("paste-input").value = await response.text();
   } catch (e) {
-    return showReceiptError("example receipt could not be loaded: " + e.message);
+    return showReceiptError("example receipt could not be loaded: " + e.message, true, { isExample: true });
   }
-  return checkPasted();
+  return checkPasted({ isExample: true });
+}
+
+// Initial loads and live fragment changes take this same route.
+async function renderLocationReceiptOrExample() {
+  if (!await maybeRenderDeepLinkedReceipt()) await renderBundledExampleReceipt();
 }
 
 // Route every received document the same way, regardless of whether it arrived
 // in a deep link or through the paste box.  A Spine receipt must never fall
 // through to the decision-receipt verifier merely because its transport changed.
-function renderClassifiedReceiptDocument(document_) {
+function renderClassifiedReceiptDocument(document_, { isExample = false } = {}) {
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
   if (classified.family === "malformed")
-    return showReceiptError("receipt document refused: " + classified.errors.join("; "));
-  if (classified.family === "decision") return renderVerifiedReceipt(document_);
+    return showReceiptError("receipt document refused: " + classified.errors.join("; "), true, { isExample });
+  if (classified.family === "decision") return renderVerifiedReceipt(document_, { isExample });
   if (classified.family === "spine") return showReceiptError(
     "This is a seal.spine/v1 proxy receipt, not the kernel decision-receipt format this page checks. " +
     "It is refused here rather than being treated as a decision receipt. Use the shipped Spine checker with the signer public key obtained out of band: " +
-    "node checker/seal-receipt-check.mjs RECEIPT.json --pubkey OUT_OF_BAND_PUBKEY.",
+    "node checker/seal-receipt-check.mjs RECEIPT.json --pubkey OUT_OF_BAND_PUBKEY.", true, { isExample },
   );
   if (classified.family === "ambiguous")
-    return showReceiptError("receipt refused: it claims both a kernel decision-receipt format and the distinct seal.spine/v1 proxy format. A record must have exactly one receipt kind.");
+    return showReceiptError("receipt refused: it claims both a kernel decision-receipt format and the distinct seal.spine/v1 proxy format. A record must have exactly one receipt kind.", true, { isExample });
   if (classified.family === "unknown_format")
-    return showReceiptError(`receipt refused: unsupported receipt discriminator ${JSON.stringify(classified.format)}. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.`);
-  return showReceiptError("receipt refused: no recognized receipt discriminator. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.");
+    return showReceiptError(`receipt refused: unsupported receipt discriminator ${JSON.stringify(classified.format)}. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.`, true, { isExample });
+  return showReceiptError("receipt refused: no recognized receipt discriminator. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.", true, { isExample });
 }
 
 // --- pasted receipt ----------------------------------------------------------
@@ -803,25 +810,29 @@ function pastedDocumentText(raw) {
 
 let pasteTimer = null;
 function onPasteInput() {
-  setReceiptDisplayState("visitor");
+  paintReceiptState(false);
   clearTimeout(pasteTimer);
   pasteTimer = setTimeout(checkPasted, 300);
 }
 
-async function checkPasted() {
+async function checkPasted({ isExample = false } = {}) {
+  paintReceiptState(isExample);
   $("paste-error").textContent = "";
   let doc;
   try { doc = pastedDocumentText($("paste-input").value); }
   catch (e) { $("paste-error").textContent = "could not decode that as base64url: " + e.message; return; }
   if (doc === null) { hideReceiptResult(); return; }
   if (LOCKED) { $("paste-error").textContent = "kernel not verified — refusing to check receipts."; return; }
-  await renderClassifiedReceiptDocument(doc);
+  await renderClassifiedReceiptDocument(doc, { isExample });
 }
 
 // --- wire up -----------------------------------------------------------------
 function init() {
   // Checker page: the paste box. Workbench page: the tools. Wire what exists.
-  if ($("paste-input")) $("paste-input").addEventListener("input", onPasteInput);
+  if ($("paste-input")) {
+    $("paste-input").addEventListener("input", onPasteInput);
+    window.addEventListener("hashchange", renderLocationReceiptOrExample);
+  }
 
   if ($("call-input")) {
     $("call-input").value = EXAMPLES.block;
