@@ -502,16 +502,12 @@ function renderCheckTable(r, receipt) {
 
   tbl.classList.remove("hidden");
 }
-// Receipt scenario: focus the page on the receipt, hide the interactive wedge UI.
+// Receipt scenario: focus the page on the receipt while keeping the claims visible.
 function focusReceiptMode() {
   $("receipt-verify").classList.remove("hidden");
-  for (const sec of document.querySelectorAll("main > section")) {
-    if (sec.id !== "receipt-verify") sec.classList.add("hidden");
-  }
   const tag = document.querySelector("header .tag");
   if (tag) tag.classList.add("hidden");
-  // Compact the header: the deep-link visitor gets the answer first, not a
-  // branding block. The no-backend promise is restated inside the section.
+  // Compact the header without hiding any of the page's claims or limits.
   document.body.classList.add("receipt-mode");
 }
 function showReceiptError(msg, focus = true, { isExample = false } = {}) {
@@ -767,11 +763,13 @@ async function renderBundledExampleReceipt(isCurrent = () => true) {
     return;
   }
   if (!isCurrent()) return;
+  bundledExampleDocument = document.trim();
   $("paste-input").value = document;
   return renderClassifiedReceiptDocument(document, { isExample: true, isCurrent });
 }
 
 let locationRenderVersion = 0;
+let bundledExampleDocument = null;
 
 // Initial loads and live fragment changes take this same total route. The
 // generation guard prevents an older async verification or example fetch from
@@ -798,6 +796,7 @@ async function renderLocationReceiptOrExample() {
 // in a deep link or through the paste box.  A Spine receipt must never fall
 // through to the decision-receipt verifier merely because its transport changed.
 function renderClassifiedReceiptDocument(document_, { isExample = false, isCurrent = () => true } = {}) {
+  if (!isCurrent()) return;
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
@@ -833,20 +832,34 @@ function pastedDocumentText(raw) {
 
 let pasteTimer = null;
 function onPasteInput() {
+  // Invalidate fragment/example renders as soon as the visitor edits the box,
+  // not only after the debounce. This closes the window in which an old fetch
+  // could overwrite newer pasted content.
+  const version = ++locationRenderVersion;
   paintReceiptState(false);
   clearTimeout(pasteTimer);
-  pasteTimer = setTimeout(checkPasted, 300);
+  pasteTimer = setTimeout(() => checkPasted(version), 300);
 }
 
-async function checkPasted({ isExample = false } = {}) {
-  paintReceiptState(isExample);
+async function checkPasted(version = ++locationRenderVersion) {
+  const isCurrent = () => version === locationRenderVersion;
+  if (!isCurrent()) return;
+  paintReceiptState(false);
   $("paste-error").textContent = "";
   let doc;
   try { doc = pastedDocumentText($("paste-input").value); }
-  catch (e) { $("paste-error").textContent = "could not decode that as base64url: " + e.message; return; }
-  if (doc === null) { hideReceiptResult(); return; }
-  if (LOCKED) { $("paste-error").textContent = "kernel not verified — refusing to check receipts."; return; }
-  await renderClassifiedReceiptDocument(doc, { isExample });
+  catch (e) {
+    if (isCurrent()) $("paste-error").textContent = "could not decode that as base64url: " + e.message;
+    return;
+  }
+  if (doc === null) { if (isCurrent()) hideReceiptResult(); return; }
+  if (LOCKED) {
+    if (isCurrent()) $("paste-error").textContent = "kernel not verified — refusing to check receipts.";
+    return;
+  }
+  const isExample = bundledExampleDocument !== null && doc === bundledExampleDocument;
+  paintReceiptState(isExample);
+  await renderClassifiedReceiptDocument(doc, { isExample, isCurrent });
 }
 
 // --- wire up -----------------------------------------------------------------

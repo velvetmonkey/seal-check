@@ -185,7 +185,6 @@ footer h3 { margin-bottom: 6px; }
 /* receipt mode: the panicked reader gets the answer, not a branding block */
 body.receipt-mode header { padding: 8px 16px; }
 body.receipt-mode header h1 { font-size: 17px; }
-body.receipt-mode header .privacy { display: none; } /* restated inside the receipt section */
 
 /* the one input: paste box on top, result directly underneath */
 #receipt-verify { padding-top: 12px; }
