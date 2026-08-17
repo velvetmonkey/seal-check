@@ -6,7 +6,7 @@ import {
 } from "./kernel.js";
 import { CFG_STANDARD, guardTarget } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
-import { decodeReceiptDocument, verifyReceipt, callSummary } from "./receipt.js";
+import { b64urlToStr, decodeReceiptDocument, verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
 
 const $ = (id) => document.getElementById(id);
@@ -62,6 +62,13 @@ function parseCall(text) {
 // canonical request line itself via the shared receipt-format.js.)
 
 // --- kernel boot + self-verification ----------------------------------------
+// The checker (index.html) and the audit workbench (tools.html) share this
+// script; each page carries only its own elements, so tool affordances are
+// wired and disabled only where they exist.
+function disableToolButtons() {
+  for (const id of ["run-btn", "replay-all"]) { const b = $(id); if (b) b.disabled = true; }
+}
+
 async function boot() {
   const pill = $("kernel-status");
   // file:// blocks both the wasm fetch and SubtleCrypto. Tell the user the fix up front.
@@ -69,8 +76,7 @@ async function boot() {
     LOCKED = true;
     pill.className = "pill pill-bad";
     pill.textContent = "open over http, not file:// — run  python3 -m http.server 8000  then visit http://localhost:8000";
-    $("run-btn").disabled = true;
-    $("replay-all").disabled = true;
+    disableToolButtons();
     return;
   }
   try {
@@ -81,18 +87,14 @@ async function boot() {
       pill.textContent = `kernel verified · sha256 ${SHA.computed.slice(0, 8)}…`;
       await ready();
       renderBadge();
-      await maybeRenderDeepLinkedReceipt();
-      // No receipt in the link: show the thing working rather than an empty
-      // box. The result is watermarked as a demo inside the result area.
-      if (!new URLSearchParams(location.hash.slice(1)).get("receipt")) {
-        await demoReceipt(false, { auto: true });
-      }
+      if ($("paste-input")) await maybeRenderDeepLinkedReceipt();
+      // No receipt in the link: the paste box waits, empty. Nothing on this
+      // page pretends to be a result until a receipt is actually supplied.
     } else {
       LOCKED = true;
       pill.className = "pill pill-bad";
       pill.textContent = "KERNEL MISMATCH — binary does not match the pinned sha256; receipts disabled";
-      $("run-btn").disabled = true;
-      $("replay-all").disabled = true;
+      disableToolButtons();
     }
   } catch (e) {
     LOCKED = true;
@@ -285,7 +287,8 @@ function badgeMarkdown() {
 }
 
 function renderBadge() {
-  $("badge-preview").innerHTML = badgeSvg();
+  const p = $("badge-preview");
+  if (p) p.innerHTML = badgeSvg();
 }
 
 // Clipboard with graceful degradation. navigator.clipboard.writeText is only
@@ -355,12 +358,9 @@ function rvLine(okFlag, text) {
 }
 // The large first-screen verdict of the re-check. Presentation only: it renders
 // an outcome that verifyReceipt already computed; nothing is decided here.
-function paintBanner(state, headline, subline, failItems, { demo = false } = {}) {
+function paintBanner(state, headline, subline, failItems) {
   const banner = $("rv-banner");
   banner.className = "rv-banner " + state;
-  // Demo marking lives INSIDE the banner so a screenshot cropped to the
-  // verdict still carries it. A heading above would be the first thing cropped.
-  $("rv-demo-band").classList.toggle("hidden", !demo);
   $("rv-headline").textContent =
     (state === "ok" ? "✓ " : state === "bad" ? "✗ " : "! ") + headline;
   $("rv-subline").textContent = subline;
@@ -514,12 +514,18 @@ function focusReceiptMode() {
   document.body.classList.add("receipt-mode");
 }
 function showReceiptError(msg, focus = true) {
-  if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
+  if (focus) focusReceiptMode();
+  $("rv-result").classList.remove("hidden");
   paintBanner("bad", "This receipt could not be read", msg);
   $("rv-table").classList.add("hidden");
-  $("rv-verdict-demo").classList.add("hidden");
   const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
   $("rv-tech").open = true;
+}
+
+// Back to the bare page: box empty, nothing result-shaped on screen.
+function hideReceiptResult() {
+  $("rv-banner").className = "rv-banner hidden";
+  $("rv-result").classList.add("hidden");
 }
 
 // HTML fragment describing the mediated call — demo receipts keep their
@@ -545,8 +551,8 @@ function renderControlReceipt(receipt) {
       ? `The same request the gate refuses went straight through, and ${ex0.rows_affected} rows were destroyed. `
       : "The same request the gate refuses went straight through. ") +
     "This record exists to show what happens without the gate.");
+  $("rv-result").classList.remove("hidden");
   $("rv-table").classList.add("hidden");
-  $("rv-verdict-demo").classList.add("hidden");
   $("rv-tech").open = true;
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = "NO GATE";
@@ -568,10 +574,9 @@ function renderControlReceipt(receipt) {
 // `input` is the received receipt DOCUMENT (raw JSON text) for anything that
 // arrived from a link, or a minted receipt object for the local demo. §12.6:
 // the text form is the one that can be checked against the bytes.
-async function renderVerifiedReceipt(input, { focus = true, note = "", demo = false, scroll = true } = {}) {
-  if (focus) focusReceiptMode(); else $("receipt-verify").classList.remove("hidden");
+async function renderVerifiedReceipt(input, { focus = true, scroll = true } = {}) {
+  if (focus) focusReceiptMode();
   $("rv-tech").open = false; // re-opened below for states that demand a close look
-  $("rv-verdict-demo").classList.toggle("hidden", !demo);
   let r;
   try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
   const receipt = r.receipt;
@@ -585,12 +590,13 @@ async function renderVerifiedReceipt(input, { focus = true, note = "", demo = fa
     return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +
       (r.formatErrors || []).join("; "), focus);
   }
+  $("rv-result").classList.remove("hidden");
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = receipt.verdict === "BLOCK" ? "REFUSED" : receipt.verdict === "ALLOW" ? "ALLOWED" : (receipt.verdict || "?");
   verdictNode.className = "verdict " + (receipt.verdict === "BLOCK" ? "v-block" : receipt.verdict === "ALLOW" ? "v-allow" : "v-error");
   $("rv-deny").textContent = receipt.deny_kernel ? `${receipt.deny_kernel} rule` : "";
 
-  $("rv-context").innerHTML = (note ? `<strong>${escapeHtml(note)}</strong> ` : "") +
+  $("rv-context").innerHTML =
     `What this receipt records: an AI agent asked to ${callSummaryHtml(receipt)}, and the seal gate — ` +
     `safety software standing between the agent and the thing it wanted to touch — decided. ` +
     `The decision on record:`;
@@ -684,29 +690,29 @@ async function renderVerifiedReceipt(input, { focus = true, note = "", demo = fa
   if (r.outcome === "authorised") {
     paintBanner("ok", "This receipt checks out",
       "Re-checked on your device just now: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and it is signed by the pinned operator key.",
-      null, { demo });
+      null);
   } else if (r.outcome === "authorised-unparseable") {
     paintBanner("warn", "Signed and intact — but only partly re-checkable",
       "The signature is valid (pinned operator key) and everything the receipt carries verifies, but the original request line could not be re-parsed, so this page could not independently re-run the decision. The verdict rests on the kernel material the receipt carries, not on an independent replay.",
-      null, { demo });
+      null);
   } else if (r.outcome === "unpinned") {
     paintBanner("warn", "Intact — but the signer is not verified",
       `Every content check passed: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and the signature is valid. What this page cannot establish is who holds the signing key (${pub12}) — no operator key is pinned in this deployment, so confirm that key out-of-band before treating this as your operator's receipt.`,
-      null, { demo });
+      null);
   } else if (r.outcome === "unverified-document") {
     paintBanner("warn", "All local checks passed — but this is not a verified document",
       "This record was minted inside this page a moment ago, so there are no received bytes to examine. Anything that arrives from outside — a link, a file — is verified as its raw text; a record handed over as an already-parsed object can never rank higher than this.",
-      null, { demo });
+      null);
   } else if (r.outcome === "crypto_unavailable") {
     paintBanner("bad", "Could not check the signature",
       `${r.cryptoUnavailableReason || "No signature verifier is available in this browser."} Without a signature check this receipt cannot be called verified.`,
-      null, { demo });
+      null);
     $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
     $("rv-tech").open = true;
   } else {
     paintBanner("bad", "This receipt does NOT check out",
       "At least one re-check failed on your device, so what this receipt says cannot be trusted. Treat it with suspicion. What does not line up:",
-      plainFailures(r), { demo });
+      plainFailures(r));
     $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
     $("rv-tech").open = true;
   }
@@ -719,6 +725,17 @@ async function maybeRenderDeepLinkedReceipt() {
   let document_;
   try { document_ = decodeReceiptDocument(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
   if (!document_) return;
+  // Show the received text in the box the way any pasted receipt would appear;
+  // setting .value programmatically fires no input event, so this does not
+  // trigger a second verification.
+  $("paste-input").value = document_;
+  return renderClassifiedReceiptDocument(document_);
+}
+
+// Route every received document the same way, regardless of whether it arrived
+// in a deep link or through the paste box.  A Spine receipt must never fall
+// through to the decision-receipt verifier merely because its transport changed.
+function renderClassifiedReceiptDocument(document_) {
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
@@ -737,49 +754,62 @@ async function maybeRenderDeepLinkedReceipt() {
   return showReceiptError("receipt refused: no recognized receipt discriminator. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.");
 }
 
-// Demo the deep-link flow without a link: build a real receipt through the
-// kernel, optionally tamper with it, and push it through the same verifier UI.
-async function demoReceipt(tamper, { auto = false } = {}) {
-  const status = $("demo-receipt-status");
-  if (LOCKED) { status.textContent = "kernel not verified — demo disabled."; return; }
-  status.textContent = "";
-  try {
-    const call = parseCall(EXAMPLES.allow);
-    const res = await decideRaw(CFG_STANDARD, call);
-    const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA, signedConfig: res.signedConfig });
-    if (tamper) receipt.verdict = receipt.verdict === "ALLOW" ? "BLOCK" : "ALLOW";
-    await renderVerifiedReceipt(receipt, {
-      focus: false,
-      demo: true,
-      scroll: !auto, // the on-load demo must not yank the page down
-      note: tamper
-        ? "Demo: this receipt was deliberately tampered with (verdict flipped) — verification must fail."
-        : auto
-          ? "No receipt link was supplied, so this is the built-in demo: a genuine receipt built by this page's kernel just now."
-          : "Demo: a genuine receipt, built by this page's kernel a moment ago.",
-    });
-  } catch (e) {
-    status.textContent = "demo error: " + e.message;
-  }
+// --- pasted receipt ----------------------------------------------------------
+// The paste box accepts a receipt in any form it travels: the raw JSON
+// document, a full link carrying #receipt=<base64url>, or the bare base64url
+// blob. Everything is reduced to the received DOCUMENT TEXT before it reaches
+// verifyReceipt — never a pre-parsed object — so a pasted receipt gets the
+// same §12.6 document-level scrutiny as a deep-linked one.
+function pastedDocumentText(raw) {
+  const text = raw.trim();
+  if (!text) return null;
+  const link = text.match(/#receipt=([A-Za-z0-9_-]+=*)/);
+  if (link) return b64urlToStr(link[1]);
+  if (/^[A-Za-z0-9_-]{8,}=*$/.test(text)) return b64urlToStr(text);
+  return text;
+}
+
+let pasteTimer = null;
+function onPasteInput() {
+  clearTimeout(pasteTimer);
+  pasteTimer = setTimeout(checkPasted, 300);
+}
+
+async function checkPasted() {
+  $("paste-error").textContent = "";
+  let doc;
+  try { doc = pastedDocumentText($("paste-input").value); }
+  catch (e) { $("paste-error").textContent = "could not decode that as base64url: " + e.message; return; }
+  if (doc === null) { hideReceiptResult(); return; }
+  if (LOCKED) { $("paste-error").textContent = "kernel not verified — refusing to check receipts."; return; }
+  await renderClassifiedReceiptDocument(doc);
 }
 
 // --- wire up -----------------------------------------------------------------
 function init() {
-  $("call-input").value = EXAMPLES.block;
-  for (const b of document.querySelectorAll(".ex")) {
-    b.addEventListener("click", () => { $("call-input").value = EXAMPLES[b.dataset.ex]; });
-  }
-  $("run-btn").addEventListener("click", runInput);
-  $("demo-receipt-good").addEventListener("click", () => demoReceipt(false));
-  $("demo-receipt-tampered").addEventListener("click", () => demoReceipt(true));
-  $("download-receipt").addEventListener("click", downloadReceipt);
-  $("rerun-receipt").addEventListener("click", verifyDeterminism);
-  $("replay-all").addEventListener("click", replayAll);
-  $("copy-badge-svg").addEventListener("click", () => copy(badgeSvg(), "SVG"));
-  $("copy-badge-md").addEventListener("click", () => copy(badgeMarkdown(), "Markdown"));
+  // Checker page: the paste box. Workbench page: the tools. Wire what exists.
+  if ($("paste-input")) $("paste-input").addEventListener("input", onPasteInput);
 
-  const c = $("corpus");
-  for (const entry of CORPUS) c.append(corpusCard(entry));
+  if ($("call-input")) {
+    $("call-input").value = EXAMPLES.block;
+    for (const b of document.querySelectorAll(".ex")) {
+      b.addEventListener("click", () => { $("call-input").value = EXAMPLES[b.dataset.ex]; });
+    }
+    $("run-btn").addEventListener("click", runInput);
+    $("download-receipt").addEventListener("click", downloadReceipt);
+    $("rerun-receipt").addEventListener("click", verifyDeterminism);
+  }
+
+  if ($("replay-all")) {
+    $("replay-all").addEventListener("click", replayAll);
+    const c = $("corpus");
+    for (const entry of CORPUS) c.append(corpusCard(entry));
+  }
+
+  if ($("copy-badge-svg")) {
+    $("copy-badge-svg").addEventListener("click", () => copy(badgeSvg(), "SVG"));
+    $("copy-badge-md").addEventListener("click", () => copy(badgeMarkdown(), "Markdown"));
+  }
 
   boot();
 }

@@ -11,12 +11,11 @@ body {
   font: 15px/1.55 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
-header { padding: 36px 20px 20px; border-bottom: 1px solid var(--line); }
-h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.5px; }
+/* compact header: the paste box, not the branding, owns the first screen */
+header { padding: 14px 20px 10px; border-bottom: 1px solid var(--line); }
+h1 { display: inline-block; margin: 0 12px 0 0; font-size: 20px; letter-spacing: -0.5px; vertical-align: middle; }
 h1::before { content: "🔒 "; }
-.tag { margin: 0 0 14px; color: var(--ink); max-width: 60ch; }
-.tag em { font-style: italic; color: var(--accent); }
-.privacy { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+.privacy { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
 .muted { color: var(--muted); }
 code, .mono { font-family: var(--mono); }
 code { background: #00000040; padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
@@ -143,18 +142,17 @@ body.receipt-mode header { padding: 10px 20px; }
 body.receipt-mode header h1 { display: inline; font-size: 16px; margin: 0 10px 0 0; vertical-align: middle; }
 body.receipt-mode header .privacy { display: none; } /* restated inside the receipt section */
 
-/* demo marking that survives a crop of the verdict alone */
-.demo-band {
-  display: block; margin: -6px -8px 12px; padding: 6px 10px;
-  background: #3a2f10; border: 1px solid var(--warn); border-radius: 6px;
-  color: var(--warn); font-family: var(--mono); font-size: 12px; letter-spacing: 0.4px;
-}
-.demo-chip {
-  display: inline-block; padding: 3px 8px; border: 1px solid var(--warn); border-radius: 6px;
-  background: #3a2f10; color: var(--warn); font-family: var(--mono); font-size: 12px; white-space: nowrap;
-}
-/* these set display, so .hidden (equal specificity, earlier in the sheet) must be re-won */
-.demo-band.hidden, .demo-chip.hidden { display: none; }
+/* the one input: paste box on top, result directly underneath */
+#receipt-verify { padding-top: 18px; }
+.paste-label { display: block; font-size: 17px; font-weight: 600; margin: 0 0 8px; }
+#paste-input { margin: 0; font-size: 13px; }
+#paste-error:empty { display: none; }
+.deep-hint { font-size: 12.5px; margin: 8px 0 0; }
+
+/* demoted tools: each former numbered section, whole, behind a disclosure */
+.tool-fold { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin: 12px 0; padding: 0 14px; }
+.tool-fold > summary { color: var(--ink); font-size: 15px; font-weight: 600; padding: 12px 0; margin: 0; }
+.tool-fold[open] { padding-bottom: 14px; }
 
 /* three-state check table */
 .rv-table-wrap { overflow-x: auto; margin: 14px 0; }
