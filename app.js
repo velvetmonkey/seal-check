@@ -30,6 +30,8 @@ const EXAMPLES = {
 }`,
 };
 
+const BUNDLED_EXAMPLE_RECEIPT = new URL("examples/allow.receipt.json", import.meta.url);
+
 // --- input parsing -----------------------------------------------------------
 function parseApprovals(value) {
   if (value == null) return [];
@@ -87,9 +89,10 @@ async function boot() {
       pill.textContent = `kernel verified · sha256 ${SHA.computed.slice(0, 8)}…`;
       await ready();
       renderBadge();
-      if ($("paste-input")) await maybeRenderDeepLinkedReceipt();
-      // No receipt in the link: the paste box waits, empty. Nothing on this
-      // page pretends to be a result until a receipt is actually supplied.
+      if ($("paste-input")) {
+        const linked = await maybeRenderDeepLinkedReceipt();
+        if (!linked) await renderBundledExampleReceipt();
+      }
     } else {
       LOCKED = true;
       pill.className = "pill pill-bad";
@@ -522,6 +525,15 @@ function showReceiptError(msg, focus = true) {
   $("rv-tech").open = true;
 }
 
+// The marker belongs to the source state, not to a particular paint call.
+// Set visitor state before decoding a link too: a malformed fragment is still
+// a visitor-supplied receipt, never an example error.
+let receiptDisplayState = "visitor";
+function setReceiptDisplayState(state) {
+  receiptDisplayState = state;
+  $("rv-example-label").classList.toggle("hidden", state !== "example");
+}
+
 // Back to the bare page: box empty, nothing result-shaped on screen.
 function hideReceiptResult() {
   $("rv-banner").className = "rv-banner hidden";
@@ -722,14 +734,34 @@ async function renderVerifiedReceipt(input, { focus = true, scroll = true } = {}
 }
 
 async function maybeRenderDeepLinkedReceipt() {
+  setReceiptDisplayState("visitor");
   let document_;
-  try { document_ = decodeReceiptDocument(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
-  if (!document_) return;
+  try { document_ = decodeReceiptDocument(); } catch (e) {
+    showReceiptError("could not decode the receipt link: " + e.message);
+    return true;
+  }
+  if (!document_) return false;
   // Show the received text in the box the way any pasted receipt would appear;
   // setting .value programmatically fires no input event, so this does not
   // trigger a second verification.
   $("paste-input").value = document_;
-  return renderClassifiedReceiptDocument(document_);
+  await checkPasted();
+  return true;
+}
+
+// Feed the bundled document into the paste handler.  The example therefore
+// takes the same raw-document parsing, classification, and verification route
+// as a receipt the visitor pasted.
+async function renderBundledExampleReceipt() {
+  setReceiptDisplayState("example");
+  try {
+    const response = await fetch(BUNDLED_EXAMPLE_RECEIPT);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    $("paste-input").value = await response.text();
+  } catch (e) {
+    return showReceiptError("example receipt could not be loaded: " + e.message);
+  }
+  return checkPasted();
 }
 
 // Route every received document the same way, regardless of whether it arrived
@@ -771,6 +803,7 @@ function pastedDocumentText(raw) {
 
 let pasteTimer = null;
 function onPasteInput() {
+  setReceiptDisplayState("visitor");
   clearTimeout(pasteTimer);
   pasteTimer = setTimeout(checkPasted, 300);
 }

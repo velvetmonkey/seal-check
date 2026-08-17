@@ -191,6 +191,7 @@ body.receipt-mode header .privacy { display: none; } /* restated inside the rece
 #receipt-verify { padding-top: 12px; }
 .paste-label { display: block; font-size: 17.5px; font-weight: 600; margin: 0 0 6px; }
 #paste-input { margin: 0; font-size: 13.5px; }
+.example-label { margin: 0 0 14px; padding: 10px 12px; border-left: 4px solid var(--warn-line); background: var(--warn-bg); color: var(--warn); }
 #paste-error:empty { display: none; }
 .deep-hint { font-size: 13.5px; margin: 6px 0 0; }
 
