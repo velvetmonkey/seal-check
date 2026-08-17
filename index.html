@@ -144,9 +144,11 @@
     <!-- 1b. VERIFY A RECEIPT (demo of the deep-link flow) -------------------->
     <section id="verify-demo">
       <h2>1b · Verify a receipt</h2>
-      <p class="muted">Receipts travel as deep links: open this page with
-        <code>#receipt=&lt;base64url of the receipt JSON&gt;</code> (that is how seal-live-demo hands you one)
-        and it is re-verified here, entirely in your browser. Or watch both outcomes now:</p>
+      <p class="muted">Decision receipts travel as deep links: open this page with
+        <code>#receipt=&lt;base64url of the receipt JSON&gt;</code> and it is re-verified here, entirely in your browser.
+        A <code>seal.spine/v1</code> proxy receipt is a different kind of record and this page refuses it; use
+        <code>node checker/seal-receipt-check.mjs RECEIPT.json --pubkey OUT_OF_BAND_PUBKEY</code> with the signer key
+        obtained independently. Or watch both decision-receipt outcomes now:</p>
       <div class="examples">
         <button id="demo-receipt-good">Verify a genuine receipt</button>
         <button id="demo-receipt-tampered">Verify a TAMPERED receipt</button>

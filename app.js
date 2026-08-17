@@ -7,6 +7,7 @@ import {
 import { CFG_STANDARD, guardTarget } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
 import { decodeReceiptDocument, verifyReceipt, callSummary } from "./receipt.js";
+import { classifyReceiptDocument } from "./receipt-format.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -718,9 +719,22 @@ async function maybeRenderDeepLinkedReceipt() {
   let document_;
   try { document_ = decodeReceiptDocument(); } catch (e) { return showReceiptError("could not decode the receipt link: " + e.message); }
   if (!document_) return;
-  // The raw text, not a parsed object: the link's own bytes are what §12.6
-  // checks for a repeated or escaped version discriminator.
-  await renderVerifiedReceipt(document_);
+  // The raw text, not a parsed object: the link's own bytes decide both its
+  // family and whether a duplicate/escaped discriminator hid that family.
+  const classified = classifyReceiptDocument(document_);
+  if (classified.family === "malformed")
+    return showReceiptError("receipt document refused: " + classified.errors.join("; "));
+  if (classified.family === "decision") return renderVerifiedReceipt(document_);
+  if (classified.family === "spine") return showReceiptError(
+    "This is a seal.spine/v1 proxy receipt, not the kernel decision-receipt format this page checks. " +
+    "It is refused here rather than being treated as a decision receipt. Use the shipped Spine checker with the signer public key obtained out of band: " +
+    "node checker/seal-receipt-check.mjs RECEIPT.json --pubkey OUT_OF_BAND_PUBKEY.",
+  );
+  if (classified.family === "ambiguous")
+    return showReceiptError("receipt refused: it claims both a kernel decision-receipt format and the distinct seal.spine/v1 proxy format. A record must have exactly one receipt kind.");
+  if (classified.family === "unknown_format")
+    return showReceiptError(`receipt refused: unsupported receipt discriminator ${JSON.stringify(classified.format)}. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.`);
+  return showReceiptError("receipt refused: no recognized receipt discriminator. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.");
 }
 
 // Demo the deep-link flow without a link: build a real receipt through the
