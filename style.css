@@ -54,7 +54,9 @@ button.ex { font-size: 12px; padding: 6px 10px; }
 .v-block { color: var(--bad); } .v-allow { color: var(--ok); } .v-error { color: var(--warn); }
 .deny-kernel { color: var(--muted); font-family: var(--mono); font-size: 13px; }
 .reason { margin: 6px 0 14px; }
-.reason.warn { color: #9a6700; font-weight: 600; }
+.reason.warn { color: var(--warn); font-weight: 600; }
+.reason.ok { color: var(--ok); font-weight: 600; }
+.reason.bad { color: var(--bad); font-weight: 600; }
 
 details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
@@ -115,7 +117,59 @@ footer { padding: 26px 20px 60px; color: var(--muted); }
 
 /* deep-linked receipt verification */
 .rv-checks { list-style: none; padding: 0; margin: .6rem 0; }
-.rv-checks li { padding: .2rem 0; font-size: .95rem; }
-.rv-ok { color: #1a7f37; }
-.rv-bad { color: #cf222e; font-weight: 600; }
-.rv-skip { color: #6e7781; }
+.rv-checks li { padding: .2rem 0; font-size: .95rem; overflow-wrap: anywhere; }
+#receipt-verify .reason, #rv-context, .rv-subline { overflow-wrap: anywhere; }
+.rv-ok { color: var(--ok); }
+.rv-bad { color: var(--bad); font-weight: 600; }
+.rv-skip { color: var(--muted); }
+
+/* the re-check verdict banner: first thing a receipt-holder sees */
+.rv-banner { border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin: 14px 0 10px; }
+.rv-banner.ok { background: #0f211b; border-color: #1f5a45; }
+.rv-banner.bad { background: #210f0f; border-color: #5a2020; }
+.rv-banner.warn { background: #211a0f; border-color: #5a4720; }
+.rv-headline { font-size: clamp(26px, 6vw, 40px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; }
+.rv-banner.ok .rv-headline { color: var(--ok); }
+.rv-banner.bad .rv-headline { color: var(--bad); }
+.rv-banner.warn .rv-headline { color: var(--warn); }
+.rv-subline { margin: 10px 0 0; font-size: 15px; color: var(--ink); max-width: 70ch; }
+.rv-fails { margin: 10px 0 0; padding-left: 1.3em; color: var(--bad); }
+.rv-fails li { padding: 2px 0; font-size: 14.5px; }
+
+#receipt-verify .verdict { font-size: 34px; }
+
+/* receipt mode: the panicked reader gets the answer, not a branding block */
+body.receipt-mode header { padding: 10px 20px; }
+body.receipt-mode header h1 { display: inline; font-size: 16px; margin: 0 10px 0 0; vertical-align: middle; }
+body.receipt-mode header .privacy { display: none; } /* restated inside the receipt section */
+
+/* demo marking that survives a crop of the verdict alone */
+.demo-band {
+  display: block; margin: -6px -8px 12px; padding: 6px 10px;
+  background: #3a2f10; border: 1px solid var(--warn); border-radius: 6px;
+  color: var(--warn); font-family: var(--mono); font-size: 12px; letter-spacing: 0.4px;
+}
+.demo-chip {
+  display: inline-block; padding: 3px 8px; border: 1px solid var(--warn); border-radius: 6px;
+  background: #3a2f10; color: var(--warn); font-family: var(--mono); font-size: 12px; white-space: nowrap;
+}
+/* these set display, so .hidden (equal specificity, earlier in the sheet) must be re-won */
+.demo-band.hidden, .demo-chip.hidden { display: none; }
+
+/* three-state check table */
+.rv-table-wrap { overflow-x: auto; margin: 14px 0; }
+.rv-table { font-size: 13px; }
+.rv-table td, .rv-table th { padding: 7px 8px; }
+.rv-table td:first-child { font-weight: 600; min-width: 11em; }
+.rv-table .rvt-state { white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+.rv-table .rvt-pass { color: var(--ok); }
+.rv-table .rvt-fail { color: var(--bad); font-weight: 700; }
+.rv-table .rvt-skip { color: var(--warn); }
+.rv-table td.rvt-detail { color: var(--muted); overflow-wrap: anywhere; }
+.rv-table tr.rvt-row-fail td { background: #210f0f; }
+.rv-context { font-size: 16px; max-width: 70ch; }
+.rv-plain, .rv-limit { margin: 18px 0; }
+.rv-plain p, .rv-limit p { max-width: 70ch; margin: 8px 0; }
+.rv-limit p { color: var(--ink); }
+#rv-tech { margin-top: 18px; }
+#rv-tech > summary { font-size: 14px; }
