@@ -1,173 +1,242 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+
+/* Light, corporate, routine. The page a compliance reader opens at work: white
+   ground, slate ink, one blue, and state colours that are legible before they
+   are decorative. Every foreground/background pair below is audited by
+   scripts/contrast.mjs — change a token there and the audit follows. */
 :root {
-  --bg: #0e0f13; --panel: #16181f; --panel2: #1b1e27; --line: #2a2e3a;
-  --ink: #e6e8ee; --muted: #9aa0ad; --accent: #5aa9ff;
-  --ok: #28c08a; --bad: #ff5d5d; --warn: #e8b54a;
+  color-scheme: light;
+
+  --bg: #ffffff; --panel: #f4f6f9; --panel2: #e9edf3; --line: #7a8494;
+  --code-bg: #eef1f6;
+  --ink: #14181f; --muted: #545d6b; --accent: #1a5fbf;
+  --ok: #0a6b3d; --bad: #ad1f1f; --warn: #7a4e00;
+  --ok-bg: #e6f4ec; --ok-line: #3f8a62;
+  --bad-bg: #fdecec; --bad-line: #a83f3f;
+  --warn-bg: #fbf1de; --warn-line: #a8781f;
+  --primary-bg: #0f4fa3; --primary-ink: #ffffff; --primary-line: #0b3d80;
+
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
-  font: 15px/1.55 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font: 16.5px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
-.wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
-/* compact header: the paste box, not the branding, owns the first screen */
-header { padding: 14px 20px 10px; border-bottom: 1px solid var(--line); }
-h1 { display: inline-block; margin: 0 12px 0 0; font-size: 20px; letter-spacing: -0.5px; vertical-align: middle; }
+/* Wide content column: on a 1440px+ window the old 880px column left ~450px of
+   dead space each side, and every paragraph paid for it in extra lines. */
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+/* compact header: title, kernel identity and the privacy line share one row,
+   so the paste box — not the branding — owns the top of the first screen. */
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+}
+h1 { margin: 0; font-size: 21px; letter-spacing: -0.4px; }
 h1::before { content: "🔒 "; }
-.privacy { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+header .privacy { margin: 0 0 0 auto; }
+.privacy { color: var(--muted); font-size: 13.5px; margin: 4px 0 0; }
 .muted { color: var(--muted); }
 code, .mono { font-family: var(--mono); }
-code { background: #00000040; padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+/* max() keeps inline code proportional in body copy but never lets it fall
+   below the 13px floor when it sits inside an already-small paragraph. */
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: max(13px, 0.88em); }
 
-.pill { display: inline-block; font-family: var(--mono); font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.pill { display: inline-block; font-family: var(--mono); font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
 .pill-wait { color: var(--muted); }
-.pill-ok { color: var(--ok); border-color: #1f5a45; background: #0f211b; }
-.pill-bad { color: var(--bad); border-color: #5a2020; background: #210f0f; }
+.pill-ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-bg); }
+.pill-bad { color: var(--bad); border-color: var(--bad-line); background: var(--bad-bg); }
 
-section { padding: 26px 0; border-bottom: 1px solid var(--line); }
-h2 { font-size: 19px; margin: 0 0 6px; }
-h3 { font-size: 15px; margin: 0 0 6px; }
+section { padding: 16px 0; border-bottom: 1px solid var(--line); }
+h2 { font-size: 21px; margin: 0 0 4px; }
+h3 { font-size: 16.5px; margin: 0 0 4px; }
+p { margin: 8px 0; }
 
 textarea {
-  width: 100%; margin: 10px 0; padding: 12px; resize: vertical;
+  width: 100%; margin: 8px 0; padding: 10px; resize: vertical;
   background: var(--panel); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 8px; font-family: var(--mono); font-size: 13px;
+  border-radius: 6px; font-family: var(--mono); font-size: 13.5px;
 }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .examples { display: flex; gap: 8px; margin: 8px 0; }
 button {
   background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 7px; padding: 8px 13px; font-size: 13px; cursor: pointer;
+  border-radius: 6px; padding: 7px 13px; font-size: 14px; cursor: pointer;
 }
 button:hover { border-color: var(--accent); }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.primary { background: #14304f; border-color: #2b6cb0; color: #dcebff; }
-button.ex { font-size: 12px; padding: 6px 10px; }
-.error { color: var(--bad); font-size: 13px; font-family: var(--mono); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button.primary { background: var(--primary-bg); border-color: var(--primary-line); color: var(--primary-ink); }
+button.ex { font-size: 13px; padding: 6px 10px; }
+.error { color: var(--bad); font-size: 13.5px; font-family: var(--mono); }
 
-.result { margin-top: 18px; }
+.result { margin-top: 14px; }
 .hidden { display: none; }
 .verdict-row { display: flex; gap: 12px; align-items: baseline; }
-.verdict { font-family: var(--mono); font-weight: 700; font-size: 22px; letter-spacing: 1px; }
-.v-block { color: var(--bad); } .v-allow { color: var(--ok); } .v-error { color: var(--warn); }
-.deny-kernel { color: var(--muted); font-family: var(--mono); font-size: 13px; }
-.reason { margin: 6px 0 14px; }
+/* Verdict never rests on colour: the word itself is the signal, and the box
+   around it differs in fill and border weight per state as well as hue. */
+.verdict { font-family: var(--mono); font-weight: 700; font-size: 21px; letter-spacing: 1px; padding: 2px 9px; border-radius: 5px; border: 1px solid var(--line); }
+.v-block { color: var(--bad); background: var(--bad-bg); border: 2px solid var(--bad-line); }
+.v-allow { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-line); }
+.v-error { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+/* the chip is a box now, so an unpainted verdict must not leave an empty one */
+.verdict:empty { display: none; }
+.deny-kernel { color: var(--muted); font-family: var(--mono); font-size: 13.5px; }
+.reason { margin: 6px 0 10px; }
 .reason.warn { color: var(--warn); font-weight: 600; }
 .reason.ok { color: var(--ok); font-weight: 600; }
 .reason.bad { color: var(--bad); font-weight: 600; }
 
-details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+details summary { cursor: pointer; color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-bottom: 8px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }
 td.mono { word-break: break-all; }
 
-.receipt-head { display: flex; justify-content: space-between; align-items: center; margin: 16px 0 6px; }
+.receipt-head { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 4px; gap: 10px; flex-wrap: wrap; }
 .receipt-actions { display: flex; gap: 8px; }
-.determinism { font-family: var(--mono); font-size: 12.5px; margin: 6px 0; }
+.determinism { font-family: var(--mono); font-size: 13px; margin: 6px 0; }
 .determinism.ok { color: var(--ok); } .determinism.bad { color: var(--bad); }
 .receipt {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 14px; overflow-x: auto; font-family: var(--mono); font-size: 12px;
-  white-space: pre; max-height: 460px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px; overflow-x: auto; font-family: var(--mono); font-size: 13px;
+  white-space: pre; max-height: 420px; overflow-y: auto; margin: 6px 0;
 }
 
-.corpus { display: grid; gap: 12px; margin-top: 14px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+/* the replay corpus uses the width the wider column bought it */
+.corpus { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 10px; margin-top: 12px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
 .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .card-name { font-weight: 600; }
-.card-lens { font-family: var(--mono); font-size: 11px; color: var(--accent); white-space: nowrap; }
-.card-attack { margin: 8px 0 4px; font-size: 13.5px; }
-.card-why { margin: 0 0 10px; font-size: 12.5px; }
-.replay-btn { font-size: 12px; }
-.card-result { font-family: var(--mono); font-size: 12.5px; }
+.card-lens { font-family: var(--mono); font-size: 13px; color: var(--accent); white-space: nowrap; }
+.card-attack { margin: 6px 0 4px; font-size: 15px; }
+.card-why { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+.replay-btn { font-size: 13px; }
+.card-result { font-family: var(--mono); font-size: 13.5px; }
 .card-result.ok { color: var(--ok); } .card-result.bad { color: var(--bad); }
 
-.badge-preview { margin: 12px 0; }
-.badge-preview svg { display: block; }
+.badge-preview { margin: 10px 0; }
+/* The badge is a fixed-geometry artifact people copy into a README, so its
+   own 11px type is not ours to change. It carries a viewBox, so the on-page
+   preview is scaled to 1.3x — the badge text renders at ~14.3px here, above
+   the 13px floor, while the copied SVG stays exactly as authored. */
+.badge-preview svg { display: block; height: 26px; width: auto; }
 .copy-fallback { display: none; width: 100%; margin-top: 10px; padding: 10px;
-  background: var(--panel); color: var(--ink); border: 1px solid var(--warn);
-  border-radius: 8px; font-family: var(--mono); font-size: 12px; resize: vertical; }
+  background: var(--panel); color: var(--ink); border: 1px solid var(--warn-line);
+  border-radius: 6px; font-family: var(--mono); font-size: 13px; resize: vertical; }
 
-.spec-id { font-family: var(--mono); font-size: 11px; color: var(--accent); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; }
-#spec-map { margin-top: 12px; }
+.spec-id { font-family: var(--mono); font-size: 13px; color: var(--accent); border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px; margin-left: 8px; vertical-align: middle; }
+#spec-map { margin-top: 10px; }
 .spec-ref { font-family: var(--mono); color: var(--accent); white-space: nowrap; }
 
-.claim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
-.claim { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--panel); }
-.claim p { font-size: 13px; margin: 0; }
-.claim.proves { border-color: #1f5a45; }
-.claim.notproves { border-color: #5a3a20; }
+/* the two claim panels: equal weight, side by side, neither a footnote */
+.claim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; align-items: start; }
+.claim { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; background: var(--panel); }
+.claim p { font-size: 15px; line-height: 1.5; margin: 0; }
+.claim h3 { margin: 0 0 4px; }
+.claim.proves { border-color: var(--ok-line); }
+.claim.notproves { border-color: var(--warn-line); }
 .claim.proves h3 { color: var(--ok); }
 .claim.notproves h3 { color: var(--warn); }
 
-footer { padding: 26px 20px 60px; color: var(--muted); }
-.ident { display: grid; grid-template-columns: 1fr; gap: 4px 0; margin: 8px 0 14px; }
-.ident dt { color: var(--ink); font-size: 13px; margin-top: 8px; }
-.ident dd { margin: 0; color: var(--muted); word-break: break-all; font-size: 12.5px; }
-.lab { font-family: var(--mono); font-size: 10.5px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
-.lab-ok { color: var(--ok); background: #0f211b; border: 1px solid #1f5a45; }
-.lab-asserted { color: var(--warn); background: #211a0f; border: 1px solid #5a4720; }
+footer { padding: 16px 16px 40px; color: var(--muted); }
+footer h3 { margin-bottom: 6px; }
+/* kernel identity across the row rather than down the page */
+.ident { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 20px; margin: 6px 0 10px; }
+.ident dt { grid-row: 1; color: var(--ink); font-size: 14px; }
+.ident dd { grid-row: 2; margin: 0; color: var(--muted); word-break: break-all; font-size: 13.5px; }
+.lab { font-family: var(--mono); font-size: 13px; padding: 0 6px; border-radius: 4px; margin-left: 6px; white-space: nowrap; }
+.lab-ok { color: var(--ok); background: var(--ok-bg); border: 1px solid var(--ok-line); }
+.lab-asserted { color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-line); }
 
-@media (max-width: 640px) {
+@media (max-width: 860px) {
+  .ident { grid-template-columns: 1fr; }
+  .ident dt, .ident dd { grid-row: auto; }
+  .ident dt { margin-top: 8px; }
+}
+@media (max-width: 700px) {
   .claim-grid { grid-template-columns: 1fr; }
+  header .privacy { margin-left: 0; }
 }
 
 /* deep-linked receipt verification */
-.rv-checks { list-style: none; padding: 0; margin: .6rem 0; }
-.rv-checks li { padding: .2rem 0; font-size: .95rem; overflow-wrap: anywhere; }
+.rv-checks { list-style: none; padding: 0; margin: .5rem 0; }
+.rv-checks li { padding: .15rem 0; font-size: 14px; overflow-wrap: anywhere; }
 #receipt-verify .reason, #rv-context, .rv-subline { overflow-wrap: anywhere; }
 .rv-ok { color: var(--ok); }
 .rv-bad { color: var(--bad); font-weight: 600; }
 .rv-skip { color: var(--muted); }
 
 /* the re-check verdict banner: first thing a receipt-holder sees */
-.rv-banner { border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin: 14px 0 10px; }
-.rv-banner.ok { background: #0f211b; border-color: #1f5a45; }
-.rv-banner.bad { background: #210f0f; border-color: #5a2020; }
-.rv-banner.warn { background: #211a0f; border-color: #5a4720; }
-.rv-headline { font-size: clamp(26px, 6vw, 40px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; }
+.rv-banner { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 12px 0 8px; background: var(--panel); }
+.rv-banner.ok { background: var(--ok-bg); border-color: var(--ok-line); }
+.rv-banner.bad { background: var(--bad-bg); border: 2px solid var(--bad-line); }
+.rv-banner.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+.rv-headline { font-size: clamp(26px, 4.4vw, 38px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; }
 .rv-banner.ok .rv-headline { color: var(--ok); }
 .rv-banner.bad .rv-headline { color: var(--bad); }
 .rv-banner.warn .rv-headline { color: var(--warn); }
-.rv-subline { margin: 10px 0 0; font-size: 15px; color: var(--ink); max-width: 70ch; }
-.rv-fails { margin: 10px 0 0; padding-left: 1.3em; color: var(--bad); }
-.rv-fails li { padding: 2px 0; font-size: 14.5px; }
+.rv-subline { margin: 8px 0 0; font-size: 16.5px; color: var(--ink); max-width: 76ch; }
+.rv-fails { margin: 8px 0 0; padding-left: 1.3em; color: var(--bad); }
+.rv-fails li { padding: 1px 0; font-size: 15.5px; }
 
-#receipt-verify .verdict { font-size: 34px; }
+#receipt-verify .verdict { font-size: 26px; }
 
 /* receipt mode: the panicked reader gets the answer, not a branding block */
-body.receipt-mode header { padding: 10px 20px; }
-body.receipt-mode header h1 { display: inline; font-size: 16px; margin: 0 10px 0 0; vertical-align: middle; }
+body.receipt-mode header { padding: 8px 16px; }
+body.receipt-mode header h1 { font-size: 17px; }
 body.receipt-mode header .privacy { display: none; } /* restated inside the receipt section */
 
 /* the one input: paste box on top, result directly underneath */
-#receipt-verify { padding-top: 18px; }
-.paste-label { display: block; font-size: 17px; font-weight: 600; margin: 0 0 8px; }
-#paste-input { margin: 0; font-size: 13px; }
+#receipt-verify { padding-top: 12px; }
+.paste-label { display: block; font-size: 17.5px; font-weight: 600; margin: 0 0 6px; }
+#paste-input { margin: 0; font-size: 13.5px; }
 #paste-error:empty { display: none; }
-.deep-hint { font-size: 12.5px; margin: 8px 0 0; }
+.deep-hint { font-size: 13.5px; margin: 6px 0 0; }
+
+/* The re-check result: a two-column band for the two reading panels, so the
+   plain-language explanation and the limits sit side by side instead of
+   stacking into another screen of scroll. Everything else spans the width. */
+/* :not(.hidden) matters: an id selector outranks .hidden, so a bare
+   `#rv-result { display: grid }` would un-hide the result block. */
+#rv-result:not(.hidden) { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr); gap: 4px 20px; align-items: start; }
+#rv-result > * { grid-column: 1 / -1; min-width: 0; }
+#rv-result > .rv-plain, #rv-result > .rv-limit { grid-column: auto; }
 
 /* demoted tools: each former numbered section, whole, behind a disclosure */
-.tool-fold { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin: 12px 0; padding: 0 14px; }
-.tool-fold > summary { color: var(--ink); font-size: 15px; font-weight: 600; padding: 12px 0; margin: 0; }
-.tool-fold[open] { padding-bottom: 14px; }
+.tool-fold { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); margin: 10px 0; padding: 0 12px; }
+.tool-fold > summary { color: var(--ink); font-size: 15.5px; font-weight: 600; padding: 10px 0; margin: 0; }
+.tool-fold[open] { padding-bottom: 12px; }
+
+/* Front page "More tools": four reading-only disclosures, two per row, using
+   the horizontal space the wider column bought. Scoped by :has(> h2) so it
+   applies to the front page's reading list and NOT to tools.html, where the
+   same #more-tools id holds the full-width working tools. */
+#more-tools:has(> h2):not(.hidden) { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; align-items: start; }
+#more-tools:has(> h2) > h2, #more-tools:has(> h2) > p { grid-column: 1 / -1; }
+#more-tools:has(> h2) > .tool-fold { margin: 0; }
+@media (max-width: 700px) {
+  #more-tools:has(> h2):not(.hidden) { grid-template-columns: 1fr; }
+  #rv-result:not(.hidden) { grid-template-columns: 1fr; }
+}
 
 /* three-state check table */
-.rv-table-wrap { overflow-x: auto; margin: 14px 0; }
-.rv-table { font-size: 13px; }
-.rv-table td, .rv-table th { padding: 7px 8px; }
+.rv-table-wrap { overflow-x: auto; margin: 10px 0; }
+.rv-table { font-size: 14px; }
+.rv-table td, .rv-table th { padding: 6px 8px; }
 .rv-table td:first-child { font-weight: 600; min-width: 11em; }
-.rv-table .rvt-state { white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+.rv-table .rvt-state { white-space: nowrap; font-family: var(--mono); font-size: 13px; }
 .rv-table .rvt-pass { color: var(--ok); }
 .rv-table .rvt-fail { color: var(--bad); font-weight: 700; }
 .rv-table .rvt-skip { color: var(--warn); }
-.rv-table td.rvt-detail { color: var(--muted); overflow-wrap: anywhere; }
-.rv-table tr.rvt-row-fail td { background: #210f0f; }
-.rv-context { font-size: 16px; max-width: 70ch; }
-.rv-plain, .rv-limit { margin: 18px 0; }
-.rv-plain p, .rv-limit p { max-width: 70ch; margin: 8px 0; }
+.rv-table td.rvt-detail { color: var(--muted); overflow-wrap: anywhere; font-weight: 400; }
+/* a failed row is tinted AND rule-marked, so the failure survives grayscale */
+.rv-table tr.rvt-row-fail td { background: var(--bad-bg); }
+.rv-table tr.rvt-row-fail td:first-child { box-shadow: inset 3px 0 0 var(--bad-line); }
+.rv-context { font-size: 16.5px; max-width: 76ch; }
+.rv-context:empty { display: none; }
+.rv-plain, .rv-limit { margin: 12px 0; }
+.rv-plain p, .rv-limit p { max-width: 76ch; margin: 6px 0; }
 .rv-limit p { color: var(--ink); }
-#rv-tech { margin-top: 18px; }
-#rv-tech > summary { font-size: 14px; }
+#rv-tech { margin-top: 12px; }
+#rv-tech > summary { font-size: 14.5px; }
