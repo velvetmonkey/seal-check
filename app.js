@@ -6,8 +6,9 @@ import {
 } from "./kernel.js";
 import { CFG_STANDARD, guardTarget } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
-import { b64urlToStr, decodeReceiptDocument, verifyReceipt, callSummary } from "./receipt.js";
+import { b64urlToStr, verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
+import { classifyReceiptFragment } from "./fragment-classifier.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -527,7 +528,21 @@ function showReceiptError(msg, focus = true, { isExample = false } = {}) {
 // state. It cannot survive a visitor result merely because an example painted
 // it earlier.
 function paintReceiptState(isExample) {
-  $("rv-example-label").classList.toggle("hidden", !isExample);
+  $("rv-example-label")?.remove();
+  // Result content belongs to the state that created it. Clearing every
+  // mutable field at the boundary means an error can never retain an earlier
+  // example's rows, raw JSON, checks, or narrative while merely hiding part of
+  // the result.
+  $("rv-table").querySelector("tbody").replaceChildren();
+  for (const id of ["rv-context", "rv-verdict", "rv-deny", "rv-checks", "rv-json", "rv-summary"])
+    $(id).replaceChildren();
+  if (isExample) {
+    const label = el("p", "example-label");
+    label.id = "rv-example-label";
+    label.append(el("strong", null, "EXAMPLE RECEIPT"),
+      " — bundled sample, not a receipt supplied by you. Its checks below apply only to this example.");
+    $("rv-result").prepend(label);
+  }
 }
 
 // Back to the bare page: box empty, nothing result-shaped on screen.
@@ -584,12 +599,18 @@ function renderControlReceipt(receipt, { isExample = false } = {}) {
 // `input` is the received receipt DOCUMENT (raw JSON text) for anything that
 // arrived from a link, or a minted receipt object for the local demo. §12.6:
 // the text form is the one that can be checked against the bytes.
-async function renderVerifiedReceipt(input, { focus = true, scroll = true, isExample = false } = {}) {
+async function renderVerifiedReceipt(input, {
+  focus = true, scroll = true, isExample = false, isCurrent = () => true,
+} = {}) {
   paintReceiptState(isExample);
   if (focus) focusReceiptMode();
   $("rv-tech").open = false; // re-opened below for states that demand a close look
   let r;
-  try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus, { isExample }); }
+  try { r = await verifyReceipt(input); } catch (e) {
+    if (isCurrent()) return showReceiptError("verification error: " + e.message, focus, { isExample });
+    return;
+  }
+  if (!isCurrent()) return;
   const receipt = r.receipt;
   if (!receipt) {
     return showReceiptError("receipt failed schema validation: " +
@@ -732,55 +753,57 @@ async function renderVerifiedReceipt(input, { focus = true, scroll = true, isExa
   if (scroll) $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function maybeRenderDeepLinkedReceipt() {
-  const params = new URLSearchParams(location.hash.slice(1));
-  if (!params.has("receipt")) return false;
-  let document_;
-  try { document_ = decodeReceiptDocument(); } catch (e) {
-    showReceiptError("could not decode the receipt link: " + e.message);
-    return true;
-  }
-  if (!document_) {
-    showReceiptError("receipt link is empty — include a base64url receipt after #receipt=.");
-    return true;
-  }
-  // Show the received text in the box the way any pasted receipt would appear;
-  // setting .value programmatically fires no input event, so this does not
-  // trigger a second verification.
-  $("paste-input").value = document_;
-  await checkPasted();
-  return true;
-}
-
 // Feed the bundled document into the paste handler.  The example therefore
 // takes the same raw-document parsing, classification, and verification route
 // as a receipt the visitor pasted.
-async function renderBundledExampleReceipt() {
+async function renderBundledExampleReceipt(isCurrent = () => true) {
+  let document;
   try {
     const response = await fetch(BUNDLED_EXAMPLE_RECEIPT);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    $("paste-input").value = await response.text();
+    document = await response.text();
   } catch (e) {
-    return showReceiptError("example receipt could not be loaded: " + e.message, true, { isExample: true });
+    if (isCurrent()) return showReceiptError("example receipt could not be loaded: " + e.message, true, { isExample: true });
+    return;
   }
-  return checkPasted({ isExample: true });
+  if (!isCurrent()) return;
+  $("paste-input").value = document;
+  return renderClassifiedReceiptDocument(document, { isExample: true, isCurrent });
 }
 
-// Initial loads and live fragment changes take this same route.
+let locationRenderVersion = 0;
+
+// Initial loads and live fragment changes take this same total route. The
+// generation guard prevents an older async verification or example fetch from
+// repainting after a newer fragment has become current.
 async function renderLocationReceiptOrExample() {
-  if (!await maybeRenderDeepLinkedReceipt()) await renderBundledExampleReceipt();
+  const version = ++locationRenderVersion;
+  const isCurrent = () => version === locationRenderVersion;
+  const state = classifyReceiptFragment(location.hash);
+
+  // Remove prior example-owned DOM synchronously, before any async work.
+  paintReceiptState(false);
+  if (state.kind === "absent") return renderBundledExampleReceipt(isCurrent);
+  $("paste-input").value = state.document ?? "";
+  if (state.kind === "empty" || state.kind === "whitespace-only" || state.kind === "unparseable")
+    return showReceiptError(state.error);
+
+  // Both remaining cases carry decoded visitor bytes. The document router
+  // gives wrong-shape inputs their family-specific refusal and valid receipt
+  // documents the normal verifier result.
+  return renderClassifiedReceiptDocument(state.document, { isCurrent });
 }
 
 // Route every received document the same way, regardless of whether it arrived
 // in a deep link or through the paste box.  A Spine receipt must never fall
 // through to the decision-receipt verifier merely because its transport changed.
-function renderClassifiedReceiptDocument(document_, { isExample = false } = {}) {
+function renderClassifiedReceiptDocument(document_, { isExample = false, isCurrent = () => true } = {}) {
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
   if (classified.family === "malformed")
     return showReceiptError("receipt document refused: " + classified.errors.join("; "), true, { isExample });
-  if (classified.family === "decision") return renderVerifiedReceipt(document_, { isExample });
+  if (classified.family === "decision") return renderVerifiedReceipt(document_, { isExample, isCurrent });
   if (classified.family === "spine") return showReceiptError(
     "This is a seal.spine/v1 proxy receipt, not the kernel decision-receipt format this page checks. " +
     "It is refused here rather than being treated as a decision receipt. Use the shipped Spine checker with the signer public key obtained out of band: " +
