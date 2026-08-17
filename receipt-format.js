@@ -306,6 +306,23 @@ export function receiptFamily(record) {
   return { family: "not_a_receipt" };
 }
 
+// The browser front door receives a document, not a pre-parsed object.  Keep
+// its family decision behind the same byte-level scanner that protects the
+// decision-receipt validator: a duplicate or escaped discriminator must never
+// be routed according to JSON.parse's lossy view of the document.
+export function classifyReceiptDocument(text) {
+  const scan = scanReceiptDocument(text);
+  if (!scan.ok) return { family: "malformed", errors: scan.errors };
+  try {
+    const record = JSON.parse(text);
+    return { ...receiptFamily(record), record };
+  } catch (error) {
+    // scanReceiptDocument normally catches this first; retain the explicit
+    // refusal if the two parsers ever diverge.
+    return { family: "malformed", errors: [`document: not parseable JSON — ${error.message}`] };
+  }
+}
+
 // A structure-aware JSON reader. NOT a regex over the text: a string that
 // looks like `"record_version"` can legitimately appear inside a VALUE (a
 // reason string, an emitted_bytes blob), and counting textual occurrences

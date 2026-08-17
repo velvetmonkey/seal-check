@@ -12,7 +12,7 @@ const key = fs.readFileSync(path.join(ROOT, "examples", "spine-signer.pub"), "ut
 
 (async () => {
   const { checkSpineReceipt } = await import("file://" + path.join(ROOT, "spine-receipt.js"));
-  const { receiptFamily } = await import("file://" + path.join(ROOT, "receipt-format.js"));
+  const { receiptFamily, classifyReceiptDocument } = await import("file://" + path.join(ROOT, "receipt-format.js"));
 
   test("genuine signed demo receipt ACCEPTS all five checks", async () => {
     const result = await checkSpineReceipt(fixture("spine-allow.receipt.json"), key);
@@ -61,5 +61,19 @@ const key = fs.readFileSync(path.join(ROOT, "examples", "spine-signer.pub"), "ut
     assert.deepEqual(receiptFamily({ receipt: "seal.spine/v2" }), { family: "unknown_format", format: "seal.spine/v2" });
     assert.deepEqual(receiptFamily({ receipt: "seal.spine/v1", seal_receipt: "v1" }), { family: "ambiguous" });
     assert.deepEqual(receiptFamily({ hello: "world" }), { family: "not_a_receipt" });
+  });
+
+  test("document intake fails closed with distinct honest refusals", () => {
+    const empty = classifyReceiptDocument("");
+    const truncated = classifyReceiptDocument('{"receipt":"seal.spine/v1"');
+    const wrongShape = classifyReceiptDocument('{"receipt":"seal.spine/v1","hello":true}');
+    assert.equal(empty.family, "malformed");
+    assert.match(empty.errors.join("; "), /empty document/);
+    assert.equal(truncated.family, "malformed");
+    assert.match(truncated.errors.join("; "), /not well-formed JSON/);
+    assert.equal(wrongShape.family, "spine");
+    return checkSpineReceipt(wrongShape.record, key).then((result) => {
+      assert.equal(result.code, "unsealed");
+    });
   });
 })().catch((error) => { console.error(error); process.exitCode = 1; });
