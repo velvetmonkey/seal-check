@@ -6,8 +6,12 @@ import {
 } from "./kernel.js";
 import { CFG_STANDARD, guardTarget } from "./seal-config.js";
 import { CORPUS } from "./corpus.js";
-import { b64urlToStr, decodeReceiptDocument, verifyReceipt, callSummary } from "./receipt.js";
+import { decodeReceiptDocument, verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
+import { classifyReceiptFragment } from "./fragment-classifier.js";
+import { renderPageClaims } from "./page-claims.js";
+import { pastedReceiptDocumentOrError } from "./receipt-input.js";
+import { clearReceiptSummary, renderReceiptSummary } from "./receipt-summary.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -176,6 +180,7 @@ async function runInput() {
   paintVerdict($("verdict"), $("deny-kernel"), res.parsed);
   $("reason").textContent = res.parsed.reason;
   renderWitness(res.parsed);
+  renderReceiptSummary($("receipt-summary"), receipt);
   $("receipt").textContent = canonicalReceiptJson(receipt);
   renderSpec(receipt);
   $("determinism").textContent = "";
@@ -348,9 +353,6 @@ async function copy(text, label) {
 }
 
 // --- deep-linked receipt verification (opened via #receipt=...) --------------
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
 function rvLine(okFlag, text) {
   const li = el("li", "rv-" + (okFlag === true ? "ok" : okFlag === false ? "bad" : "skip"));
   li.textContent = (okFlag === true ? "✓ " : okFlag === false ? "✗ " : "• ") + text;
@@ -515,6 +517,7 @@ function focusReceiptMode() {
 }
 function showReceiptError(msg, focus = true) {
   if (focus) focusReceiptMode();
+  clearReceiptSummary($("receipt-summary"));
   $("rv-result").classList.remove("hidden");
   paintBanner("bad", "This receipt could not be read", msg);
   $("rv-table").classList.add("hidden");
@@ -526,19 +529,42 @@ function showReceiptError(msg, focus = true) {
 function hideReceiptResult() {
   $("rv-banner").className = "rv-banner hidden";
   $("rv-result").classList.add("hidden");
+  clearReceiptSummary($("receipt-summary"));
 }
 
-// HTML fragment describing the mediated call — demo receipts keep their
+function makeNode(tag, text, cls = null) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+// DOM fragment describing the mediated call — demo receipts keep their
 // operation-on-table phrasing, everything else falls back to tool+arguments.
-function callSummaryHtml(receipt) {
+function appendCallSummary(container, receipt) {
   const s = callSummary(receipt);
   if (s.unparseable) {
-    return `make a call whose wire line could not be re-parsed by the receipt layer ` +
-      `(§11.1; raw line sha256 <code>${escapeHtml(s.rawLineShort)}</code>)`;
+    container.append("make a call whose wire line could not be re-parsed by the receipt layer (§11.1; raw line sha256 ");
+    container.append(makeNode("code", s.rawLineShort));
+    container.append(")");
+    return;
   }
-  return s.demo
-    ? `run <code>${escapeHtml(s.operation)}</code> on <code>${escapeHtml(s.table)}</code>`
-    : `call <code>${escapeHtml(s.tool)}</code> with arguments <code>${escapeHtml(s.argsJson)}</code>`;
+  if (s.demo) {
+    container.append("run ");
+    container.append(makeNode("code", s.operation));
+    container.append(" on ");
+    container.append(makeNode("code", s.table));
+    return;
+  }
+  container.append("call ");
+  container.append(makeNode("code", s.tool));
+  container.append(" with arguments ");
+  container.append(makeNode("code", s.argsJson));
+}
+
+function appendReceiptClaimNote(container) {
+  container.append(" ");
+  container.append(makeNode("em", "(as the receipt claims — not confirmed by this page)", "muted"));
 }
 
 // The control receipt: seal was switched OFF (bypass), so there is no kernel
@@ -558,8 +584,13 @@ function renderControlReceipt(receipt) {
   verdictNode.textContent = "NO GATE";
   verdictNode.className = "verdict v-block";
   $("rv-deny").textContent = "seal switched off (control)";
-  $("rv-context").innerHTML = `This is the <strong>control</strong> run. The gate was switched OFF, so it did not mediate the call. ` +
-    `The agent asked to ${callSummaryHtml(receipt)} — with the gate absent, nothing stood in the way.`;
+  const context = $("rv-context");
+  context.replaceChildren();
+  context.append("This is the ");
+  context.append(makeNode("strong", "control"));
+  context.append(" run. The gate was switched OFF, so it did not mediate the call. The agent asked to ");
+  appendCallSummary(context, receipt);
+  context.append(" — with the gate absent, nothing stood in the way.");
   const ul = $("rv-checks"); ul.textContent = "";
   ul.append(rvLine(true, `request bytes match the receipt's fingerprint (${(receipt.canonical_request_sha256 || "").slice(0, 12)}…), the same request as the blocked attack`));
   ul.append(rvLine(null, "the gate was OFF, so the verified kernel did NOT run, nothing mediated this call"));
@@ -577,6 +608,7 @@ function renderControlReceipt(receipt) {
 async function renderVerifiedReceipt(input, { focus = true, scroll = true } = {}) {
   if (focus) focusReceiptMode();
   $("rv-tech").open = false; // re-opened below for states that demand a close look
+  clearReceiptSummary($("receipt-summary"));
   let r;
   try { r = await verifyReceipt(input); } catch (e) { return showReceiptError("verification error: " + e.message, focus); }
   const receipt = r.receipt;
@@ -585,21 +617,23 @@ async function renderVerifiedReceipt(input, { focus = true, scroll = true } = {}
       (r.formatErrors || []).join("; "), focus);
   }
 
-  if (receipt.bypass) return renderControlReceipt(receipt);
   if (r.formatOk === false) {
     return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +
       (r.formatErrors || []).join("; "), focus);
   }
+  renderReceiptSummary($("receipt-summary"), receipt);
+  if (receipt.bypass) return renderControlReceipt(receipt);
   $("rv-result").classList.remove("hidden");
   const verdictNode = $("rv-verdict");
   verdictNode.textContent = receipt.verdict === "BLOCK" ? "REFUSED" : receipt.verdict === "ALLOW" ? "ALLOWED" : (receipt.verdict || "?");
   verdictNode.className = "verdict " + (receipt.verdict === "BLOCK" ? "v-block" : receipt.verdict === "ALLOW" ? "v-allow" : "v-error");
   $("rv-deny").textContent = receipt.deny_kernel ? `${receipt.deny_kernel} rule` : "";
 
-  $("rv-context").innerHTML =
-    `What this receipt records: an AI agent asked to ${callSummaryHtml(receipt)}, and the seal gate — ` +
-    `safety software standing between the agent and the thing it wanted to touch — decided. ` +
-    `The decision on record:`;
+  const context = $("rv-context");
+  context.replaceChildren();
+  context.append("What this receipt records: an AI agent asked to ");
+  appendCallSummary(context, receipt);
+  context.append(", and the seal gate — safety software standing between the agent and the thing it wanted to touch — decided. The decision on record:");
 
   const ul = $("rv-checks"); ul.textContent = "";
   // §12.6: say plainly whether the RECEIVED BYTES were checked, or whether
@@ -707,13 +741,13 @@ async function renderVerifiedReceipt(input, { focus = true, scroll = true } = {}
     paintBanner("bad", "Could not check the signature",
       `${r.cryptoUnavailableReason || "No signature verifier is available in this browser."} Without a signature check this receipt cannot be called verified.`,
       null);
-    $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
+    appendReceiptClaimNote(context);
     $("rv-tech").open = true;
   } else {
     paintBanner("bad", "This receipt does NOT check out",
       "At least one re-check failed on your device, so what this receipt says cannot be trusted. Treat it with suspicion. What does not line up:",
       plainFailures(r));
-    $("rv-context").innerHTML += ` <em class="muted">(as the receipt claims — not confirmed by this page)</em>`;
+    appendReceiptClaimNote(context);
     $("rv-tech").open = true;
   }
 
@@ -736,6 +770,7 @@ async function maybeRenderDeepLinkedReceipt() {
 // in a deep link or through the paste box.  A Spine receipt must never fall
 // through to the decision-receipt verifier merely because its transport changed.
 function renderClassifiedReceiptDocument(document_) {
+  clearReceiptSummary($("receipt-summary"));
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
@@ -754,21 +789,6 @@ function renderClassifiedReceiptDocument(document_) {
   return showReceiptError("receipt refused: no recognized receipt discriminator. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.");
 }
 
-// --- pasted receipt ----------------------------------------------------------
-// The paste box accepts a receipt in any form it travels: the raw JSON
-// document, a full link carrying #receipt=<base64url>, or the bare base64url
-// blob. Everything is reduced to the received DOCUMENT TEXT before it reaches
-// verifyReceipt — never a pre-parsed object — so a pasted receipt gets the
-// same §12.6 document-level scrutiny as a deep-linked one.
-function pastedDocumentText(raw) {
-  const text = raw.trim();
-  if (!text) return null;
-  const link = text.match(/#receipt=([A-Za-z0-9_-]+=*)/);
-  if (link) return b64urlToStr(link[1]);
-  if (/^[A-Za-z0-9_-]{8,}=*$/.test(text)) return b64urlToStr(text);
-  return text;
-}
-
 let pasteTimer = null;
 function onPasteInput() {
   clearTimeout(pasteTimer);
@@ -777,16 +797,16 @@ function onPasteInput() {
 
 async function checkPasted() {
   $("paste-error").textContent = "";
-  let doc;
-  try { doc = pastedDocumentText($("paste-input").value); }
-  catch (e) { $("paste-error").textContent = "could not decode that as base64url: " + e.message; return; }
-  if (doc === null) { hideReceiptResult(); return; }
+  clearReceiptSummary($("receipt-summary"));
+  const decoded = pastedReceiptDocumentOrError($("paste-input").value);
+  if (!decoded.ok) return showReceiptError(decoded.error);
   if (LOCKED) { $("paste-error").textContent = "kernel not verified — refusing to check receipts."; return; }
-  await renderClassifiedReceiptDocument(doc);
+  await renderClassifiedReceiptDocument(decoded.document);
 }
 
 // --- wire up -----------------------------------------------------------------
 function init() {
+  renderPageClaims(document);
   // Checker page: the paste box. Workbench page: the tools. Wire what exists.
   if ($("paste-input")) $("paste-input").addEventListener("input", onPasteInput);
 

@@ -102,6 +102,10 @@ td.mono { word-break: break-all; }
   padding: 12px; overflow-x: auto; font-family: var(--mono); font-size: 13px;
   white-space: pre; max-height: 420px; overflow-y: auto; margin: 6px 0;
 }
+.receipt-summary { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 12px 14px; margin: 10px 0; }
+.receipt-summary h3, .receipt-summary h4 { margin: 0 0 6px; }
+.receipt-summary-line { margin: 5px 0; overflow-wrap: anywhere; }
+.receipt-evidence { margin: 10px 0; }
 
 /* the replay corpus uses the width the wider column bought it */
 .corpus { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 10px; margin-top: 12px; align-items: start; }

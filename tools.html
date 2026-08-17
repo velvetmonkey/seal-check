@@ -61,7 +61,14 @@
             </div>
           </div>
           <p id="determinism" class="determinism"></p>
-          <pre id="receipt" class="receipt"></pre>
+          <section class="receipt-summary" aria-labelledby="receipt-summary-heading">
+            <h4 id="receipt-summary-heading">Receipt summary</h4>
+            <div id="receipt-summary"></div>
+          </section>
+          <details class="receipt-evidence">
+            <summary>Full evidence: raw receipt JSON</summary>
+            <pre id="receipt" class="receipt"></pre>
+          </details>
         </div>
       </details>
 
@@ -115,12 +122,7 @@
         </div>
         <div class="claim notproves">
           <h3>✗ What this does NOT prove</h3>
-          <p>It does not certify your whole MCP server, your transport, your tool implementations, or that your
-            deployment actually routes calls through this gate. The <code>sha256</code> verifies <em>which binary
-            ran</em>. It does <strong>not</strong> prove the axioms or the Lean proofs themselves. No third party
-            certifies anything here. In particular <strong>ARIA certifies nothing</strong>, no ARIA endorsement,
-            outcome, affiliation, or status is claimed or implied. This is not an endorsement and not a
-            trustworthiness badge for your server.</p>
+          <p data-claims-not-proves></p>
         </div>
       </div>
     </section>
