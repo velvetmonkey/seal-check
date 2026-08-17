@@ -132,85 +132,48 @@
       </div>
     </section>
 
-    <!-- SECONDARY TOOLS — the wedge-audit workbench this page used to lead
-         with. Demoted, never deleted: each former numbered section lives whole
-         inside a disclosure. Nothing a receipt-holder must open. -------------->
+    <!-- SECONDARY TOOLS — the wedge-audit workbench now lives on its own page
+         (tools.html), reached by the plain link below. This page keeps only
+         READING about those tools: no button, no example loader, nothing here
+         runs anything. The limit statements are preserved verbatim. ----------->
     <section id="more-tools">
       <h2>More tools</h2>
-      <p class="muted">Is your MCP boundary <em>actually</em> mediated? The tools below run a tool-call
-        through the same verified kernel, replay known bypass attacks, and map receipts to the
-        conformance profile — for people auditing a boundary, not checking a receipt.</p>
+      <p class="muted">Is your MCP boundary <em>actually</em> mediated? The
+        <a href="tools.html">audit workbench</a> — a separate page — runs a tool-call
+        through the same verified kernel, replays known bypass attacks, and maps receipts to the
+        conformance profile — for people auditing a boundary, not checking a receipt.
+        Nothing on this page runs those tools; the notes below only describe them.</p>
 
-      <!-- CHECK A CALL (formerly section 1) -->
+      <!-- CHECK A CALL (reading only; the tool is on tools.html) -->
       <details class="tool-fold" id="check">
-        <summary>Check a call — paste an MCP tool-call, get a deterministic Allow/Block verdict and a receipt</summary>
-        <p class="muted">Paste an MCP tool-call as JSON, either a JSON-RPC <code>tools/call</code> or a simple
+        <summary>Check a call — an MCP tool-call in, a deterministic Allow/Block verdict and a receipt out</summary>
+        <p class="muted">On the <a href="tools.html#check">audit workbench</a>, paste an MCP tool-call as JSON,
+          either a JSON-RPC <code>tools/call</code> or a simple
           <code>{ "tool", "args", "approvals" }</code> object. It runs against a standard multi-kernel policy.</p>
-        <div class="examples">
-          <button class="ex" data-ex="block">Load a blocked example</button>
-          <button class="ex" data-ex="allow">Load an allowed example</button>
-        </div>
-        <textarea id="call-input" spellcheck="false" rows="9" aria-label="MCP tool-call JSON"></textarea>
-        <div class="row">
-          <button id="run-btn" class="primary">Run through kernel</button>
-          <span id="run-error" class="error" role="alert"></span>
-        </div>
-
-        <div id="result" class="result hidden">
-          <div class="verdict-row">
-            <span id="verdict" class="verdict"></span>
-            <span id="deny-kernel" class="deny-kernel"></span>
-          </div>
-          <p id="reason" class="reason"></p>
-
-          <details id="witness-wrap" open>
-            <summary>Parse witness: per-gate seals (<span id="cert-count">0</span>)</summary>
-            <table id="witness"><thead><tr><th>kernel</th><th>verdict</th><th>reason</th><th>certHash</th></tr></thead><tbody></tbody></table>
-          </details>
-
-          <div class="receipt-head">
-            <h3>Decision receipt</h3>
-            <div class="receipt-actions">
-              <button id="download-receipt">Download receipt.json</button>
-              <button id="rerun-receipt" title="Run the same input again and confirm byte-identical output">Verify determinism</button>
-            </div>
-          </div>
-          <p id="determinism" class="determinism"></p>
-          <pre id="receipt" class="receipt"></pre>
-        </div>
       </details>
 
-      <!-- REPLAY (formerly section 2) -->
+      <!-- REPLAY (reading only; the tool is on tools.html) -->
       <details class="tool-fold" id="replay">
         <summary>Replay known bypass attacks — named traces that should not get through</summary>
-        <p class="muted">Each is a named trace that <em>should not</em> get through. One click runs it against the
+        <p class="muted">Each is a named trace that <em>should not</em> get through. On the
+          <a href="tools.html#replay">audit workbench</a>, one click runs it against the
           live kernel; the verdict shown is the kernel's, read back from the receipt.</p>
-        <div class="row"><button id="replay-all" class="primary">Replay all</button>
-          <span id="replay-summary" class="muted"></span></div>
-        <div id="corpus" class="corpus"></div>
       </details>
 
-      <!-- BADGE (formerly section 3) -->
+      <!-- BADGE (reading only; the generator is on tools.html) -->
       <details class="tool-fold" id="badge-sec">
         <summary>"seal-checked boundary" badge — carries the kernel's short sha256, nothing more</summary>
         <p class="muted">A self-contained badge carrying the kernel's short sha256. It records that a call was
-          checked against this verified kernel binary, nothing more (see the claims panel above).</p>
-        <div id="badge-preview" class="badge-preview"></div>
-        <div class="row">
-          <button id="copy-badge-svg">Copy badge (SVG)</button>
-          <button id="copy-badge-md">Copy badge (Markdown)</button>
-          <span id="copy-status" class="muted"></span>
-        </div>
+          checked against this verified kernel binary, nothing more (see the claims panel above).
+          Generated on the <a href="tools.html#badge-sec">audit workbench</a>.</p>
       </details>
 
-      <!-- CONFORMANCE MAP (formerly section 4) -->
+      <!-- CONFORMANCE MAP (reading only; the live map is on tools.html) -->
       <details class="tool-fold" id="spec">
         <summary>Conformance map <span class="spec-id">SEAL-MEDIATION-PROFILE-L0 v0</span></summary>
         <p class="muted">Each field of the receipt from "Check a call", mapped to the profile clause it satisfies.
-          Run a call there to populate it. Spec:
+          Run a call on the <a href="tools.html#spec">audit workbench</a> to populate it. Spec:
           <a href="docs/SEAL-MEDIATION-PROFILE-L0.md">docs/SEAL-MEDIATION-PROFILE-L0.md</a>.</p>
-        <p id="spec-empty" class="muted">Run a call above to map its receipt to the profile.</p>
-        <table id="spec-map" class="hidden"><thead><tr><th>receipt field</th><th>value</th><th>clause</th><th>requirement</th></tr></thead><tbody></tbody></table>
       </details>
     </section>
   </main>

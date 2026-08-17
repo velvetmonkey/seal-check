@@ -62,6 +62,13 @@ function parseCall(text) {
 // canonical request line itself via the shared receipt-format.js.)
 
 // --- kernel boot + self-verification ----------------------------------------
+// The checker (index.html) and the audit workbench (tools.html) share this
+// script; each page carries only its own elements, so tool affordances are
+// wired and disabled only where they exist.
+function disableToolButtons() {
+  for (const id of ["run-btn", "replay-all"]) { const b = $(id); if (b) b.disabled = true; }
+}
+
 async function boot() {
   const pill = $("kernel-status");
   // file:// blocks both the wasm fetch and SubtleCrypto. Tell the user the fix up front.
@@ -69,8 +76,7 @@ async function boot() {
     LOCKED = true;
     pill.className = "pill pill-bad";
     pill.textContent = "open over http, not file:// — run  python3 -m http.server 8000  then visit http://localhost:8000";
-    $("run-btn").disabled = true;
-    $("replay-all").disabled = true;
+    disableToolButtons();
     return;
   }
   try {
@@ -81,15 +87,14 @@ async function boot() {
       pill.textContent = `kernel verified · sha256 ${SHA.computed.slice(0, 8)}…`;
       await ready();
       renderBadge();
-      await maybeRenderDeepLinkedReceipt();
+      if ($("paste-input")) await maybeRenderDeepLinkedReceipt();
       // No receipt in the link: the paste box waits, empty. Nothing on this
       // page pretends to be a result until a receipt is actually supplied.
     } else {
       LOCKED = true;
       pill.className = "pill pill-bad";
       pill.textContent = "KERNEL MISMATCH — binary does not match the pinned sha256; receipts disabled";
-      $("run-btn").disabled = true;
-      $("replay-all").disabled = true;
+      disableToolButtons();
     }
   } catch (e) {
     LOCKED = true;
@@ -282,7 +287,8 @@ function badgeMarkdown() {
 }
 
 function renderBadge() {
-  $("badge-preview").innerHTML = badgeSvg();
+  const p = $("badge-preview");
+  if (p) p.innerHTML = badgeSvg();
 }
 
 // Clipboard with graceful degradation. navigator.clipboard.writeText is only
@@ -774,20 +780,29 @@ async function checkPasted() {
 
 // --- wire up -----------------------------------------------------------------
 function init() {
-  $("call-input").value = EXAMPLES.block;
-  for (const b of document.querySelectorAll(".ex")) {
-    b.addEventListener("click", () => { $("call-input").value = EXAMPLES[b.dataset.ex]; });
-  }
-  $("paste-input").addEventListener("input", onPasteInput);
-  $("run-btn").addEventListener("click", runInput);
-  $("download-receipt").addEventListener("click", downloadReceipt);
-  $("rerun-receipt").addEventListener("click", verifyDeterminism);
-  $("replay-all").addEventListener("click", replayAll);
-  $("copy-badge-svg").addEventListener("click", () => copy(badgeSvg(), "SVG"));
-  $("copy-badge-md").addEventListener("click", () => copy(badgeMarkdown(), "Markdown"));
+  // Checker page: the paste box. Workbench page: the tools. Wire what exists.
+  if ($("paste-input")) $("paste-input").addEventListener("input", onPasteInput);
 
-  const c = $("corpus");
-  for (const entry of CORPUS) c.append(corpusCard(entry));
+  if ($("call-input")) {
+    $("call-input").value = EXAMPLES.block;
+    for (const b of document.querySelectorAll(".ex")) {
+      b.addEventListener("click", () => { $("call-input").value = EXAMPLES[b.dataset.ex]; });
+    }
+    $("run-btn").addEventListener("click", runInput);
+    $("download-receipt").addEventListener("click", downloadReceipt);
+    $("rerun-receipt").addEventListener("click", verifyDeterminism);
+  }
+
+  if ($("replay-all")) {
+    $("replay-all").addEventListener("click", replayAll);
+    const c = $("corpus");
+    for (const entry of CORPUS) c.append(corpusCard(entry));
+  }
+
+  if ($("copy-badge-svg")) {
+    $("copy-badge-svg").addEventListener("click", () => copy(badgeSvg(), "SVG"));
+    $("copy-badge-md").addEventListener("click", () => copy(badgeMarkdown(), "Markdown"));
+  }
 
   boot();
 }
