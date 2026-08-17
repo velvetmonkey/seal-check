@@ -9,6 +9,7 @@ import { CORPUS } from "./corpus.js";
 import { b64urlToStr, verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
 import { classifyReceiptFragment } from "./fragment-classifier.js";
+import { renderReceiptSummary } from "./receipt-summary.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -177,6 +178,7 @@ async function runInput() {
   paintVerdict($("verdict"), $("deny-kernel"), res.parsed);
   $("reason").textContent = res.parsed.reason;
   renderWitness(res.parsed);
+  renderReceiptSummary($("receipt-summary"), receipt);
   $("receipt").textContent = canonicalReceiptJson(receipt);
   renderSpec(receipt);
   $("determinism").textContent = "";
@@ -613,6 +615,7 @@ async function renderVerifiedReceipt(input, {
       (r.formatErrors || []).join("; "), focus, { isExample });
   }
 
+  renderReceiptSummary($("receipt-summary"), receipt);
   if (receipt.bypass) return renderControlReceipt(receipt, { isExample });
   if (r.formatOk === false) {
     return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +

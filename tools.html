@@ -61,7 +61,14 @@
             </div>
           </div>
           <p id="determinism" class="determinism"></p>
-          <pre id="receipt" class="receipt"></pre>
+          <section class="receipt-summary" aria-labelledby="receipt-summary-heading">
+            <h4 id="receipt-summary-heading">Receipt summary</h4>
+            <div id="receipt-summary"></div>
+          </section>
+          <details class="receipt-evidence">
+            <summary>Full evidence: raw receipt JSON</summary>
+            <pre id="receipt" class="receipt"></pre>
+          </details>
         </div>
       </details>
 
