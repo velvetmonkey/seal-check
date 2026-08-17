@@ -268,9 +268,9 @@ function badgeSvg() {
   const sha = (SHA && SHA.computed ? SHA.computed : "").slice(0, 8);
   const label = "seal-checked boundary";
   const lw = 150, vw = 78, h = 20;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + vw}" height="${h}" role="img" aria-label="${label}: ${sha}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + vw}" height="${h}" viewBox="0 0 ${lw + vw} ${h}" role="img" aria-label="${label}: ${sha}">
   <rect width="${lw}" height="${h}" fill="#3a3a44"/>
-  <rect x="${lw}" width="${vw}" height="${h}" fill="#0a8f6e"/>
+  <rect x="${lw}" width="${vw}" height="${h}" fill="#0a7d61"/>
   <g fill="#fff" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="11">
     <text x="8" y="14">${label}</text>
     <text x="${lw + 8}" y="14">${sha}</text>

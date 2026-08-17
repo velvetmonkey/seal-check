@@ -24,3 +24,4 @@ jobs:
       - run: node test/verify-profile.test.cjs
       - run: node scripts/claims-drift.mjs
       - run: node --test test/claims-drift.test.mjs
+      - run: node scripts/contrast.mjs
