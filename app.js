@@ -729,6 +729,13 @@ async function maybeRenderDeepLinkedReceipt() {
   // setting .value programmatically fires no input event, so this does not
   // trigger a second verification.
   $("paste-input").value = document_;
+  return renderClassifiedReceiptDocument(document_);
+}
+
+// Route every received document the same way, regardless of whether it arrived
+// in a deep link or through the paste box.  A Spine receipt must never fall
+// through to the decision-receipt verifier merely because its transport changed.
+function renderClassifiedReceiptDocument(document_) {
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
@@ -775,7 +782,7 @@ async function checkPasted() {
   catch (e) { $("paste-error").textContent = "could not decode that as base64url: " + e.message; return; }
   if (doc === null) { hideReceiptResult(); return; }
   if (LOCKED) { $("paste-error").textContent = "kernel not verified — refusing to check receipts."; return; }
-  await renderVerifiedReceipt(doc, { focus: false, scroll: false });
+  await renderClassifiedReceiptDocument(doc);
 }
 
 // --- wire up -----------------------------------------------------------------
