@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   LEGACY_TOOLS_ANCHOR_TARGETS,
   legacyToolsDestination,
+  legacyToolsRequestedHash,
   rememberLegacyToolsNavigation,
   revealMissingLegacyToolsFragment,
 } from "../legacy-tools-redirect.js";
@@ -61,21 +62,25 @@ function redirectControl(sourceHref) {
     removeItem: (key) => stored.delete(key),
     setItem: (key, value) => stored.set(key, value),
   };
-  rememberLegacyToolsNavigation(storage, destination, source.hash.slice(1));
+  rememberLegacyToolsNavigation(storage, destination, legacyToolsRequestedHash(source));
 
   const notice = { hidden: true };
+  const namedMessage = { hidden: false };
+  const collapsedMessage = { hidden: true };
   const fragmentName = { textContent: "" };
   const ids = new Set([...readPage("index.html").matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
   const document = {
     referrer: "",
     getElementById(id) {
       if (id === "legacy-missing-fragment") return notice;
+      if (id === "legacy-missing-fragment-named") return namedMessage;
+      if (id === "legacy-missing-fragment-collapsed") return collapsedMessage;
       if (id === "legacy-missing-fragment-name") return fragmentName;
       return ids.has(id) ? { id } : null;
     },
   };
   const result = revealMissingLegacyToolsFragment({ document, location, storage });
-  return { destination: location, fragmentName, notice, result };
+  return { collapsedMessage, destination: location, fragmentName, namedMessage, notice, result };
 }
 
 test("control 1: known old more-tools id lands on its section with no notice", () => {
@@ -95,7 +100,7 @@ test("control 2: unknown old id shows a visible notice naming the requested frag
   assert.match(readPage("index.html"), /This page moved[\s\S]*requested section[\s\S]*no longer exists/);
 });
 
-test("control 3: fragment matching is case-sensitive", () => {
+test("fragment matching is case-sensitive", () => {
   const control = redirectControl("https://example.test/tools.html#MORE-TOOLS");
   assert.equal(control.result, "missing", "case-mismatched legacy fragment must not be reported as found");
   assert.equal(control.notice.hidden, false);
@@ -109,9 +114,44 @@ test("percent-encoded spelling is not normalized into a legacy id", () => {
   assert.equal(control.fragmentName.textContent, "more%2Dtools");
 });
 
-test("control 4: bare tools redirect has no fragment and shows no notice", () => {
+test("control 3: tools redirect with no hash has no fragment and shows no notice", () => {
   const control = redirectControl("https://example.test/tools.html");
   assert.equal(control.destination.hash, "");
   assert.equal(control.result, "no-fragment");
   assert.equal(control.notice.hidden, true);
+});
+
+test("control 4: every reported collapsing input shows the generic notice", () => {
+  for (const [name, fragment] of [
+    ["space", " "],
+    ["tab", "\t"],
+    ["line feed", "\n"],
+    ["carriage return", "\r"],
+    ["null", "\0"],
+  ]) {
+    const control = redirectControl(`https://example.test/tools.html#${fragment}`);
+    assert.equal(control.result, "missing", `${name} fragment must not fail silently`);
+    assert.equal(control.notice.hidden, false, `${name} fragment must show the notice`);
+    assert.equal(control.namedMessage.hidden, true, `${name} fragment must not render a raw value`);
+    assert.equal(control.collapsedMessage.hidden, false, `${name} fragment must use generic wording`);
+    assert.equal(control.fragmentName.textContent, "", `${name} fragment must not reach page text`);
+  }
+});
+
+test("control 5: invented form-feed collapsing input shows the generic notice", () => {
+  const control = redirectControl("https://example.test/tools.html#\f");
+  assert.equal(control.result, "missing", "form-feed fragment must not fail silently");
+  assert.equal(control.notice.hidden, false);
+  assert.equal(control.namedMessage.hidden, true);
+  assert.equal(control.collapsedMessage.hidden, false);
+  assert.equal(control.fragmentName.textContent, "");
+});
+
+test("control 6: a bare hash counts as a request and shows the generic notice", () => {
+  const control = redirectControl("https://example.test/tools.html#");
+  assert.equal(control.result, "missing", "bare hash must not fail silently");
+  assert.equal(control.notice.hidden, false);
+  assert.equal(control.namedMessage.hidden, true);
+  assert.equal(control.collapsedMessage.hidden, false);
+  assert.equal(control.fragmentName.textContent, "");
 });
