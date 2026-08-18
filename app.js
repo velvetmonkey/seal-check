@@ -21,6 +21,10 @@ let LOCKED = false;   // true if kernel mismatch — refuse to emit receipts
 let LAST = null;      // {decide:()=>Promise, inputBlock} for the determinism re-run
 
 // --- examples ---------------------------------------------------------------
+// A matched pair: the same tool and the same arguments, twice. The visible
+// difference is the approval, which flips the live CFG_STANDARD verdict.
+const EXAMPLE_TOOL = "db.execute";
+const EXAMPLE_ARGS = { database: "prod", sql: "drop table users" };
 const EXAMPLES = {
   block: `{
   "tool": "db.execute",
@@ -28,9 +32,9 @@ const EXAMPLES = {
   "approvals": []
 }`,
   allow: `{
-  "tool": "store.update",
-  "args": { "op": "orset.add", "key": "k1" },
-  "approvals": ["${guardTarget("store.update", { op: "orset.add", key: "k1" })}"]
+  "tool": "db.execute",
+  "args": { "database": "prod", "sql": "drop table users" },
+  "approvals": ["${guardTarget(EXAMPLE_TOOL, EXAMPLE_ARGS)}"]
 }`,
 };
 
@@ -68,9 +72,9 @@ function parseCall(text) {
 // canonical request line itself via the shared receipt-format.js.)
 
 // --- kernel boot + self-verification ----------------------------------------
-// The checker (index.html) and the audit workbench (tools.html) share this
-// script; each page carries only its own elements, so tool affordances are
-// wired and disabled only where they exist.
+// One page (index.html) carries both the receipt checker and the audit
+// workbench; tools.html is a redirect stub. Element-presence guards remain so
+// a page variant carrying only some elements still boots.
 function disableToolButtons() {
   for (const id of ["run-btn", "replay-all"]) { const b = $(id); if (b) b.disabled = true; }
 }
@@ -180,7 +184,7 @@ async function runInput() {
   paintVerdict($("verdict"), $("deny-kernel"), res.parsed);
   $("reason").textContent = res.parsed.reason;
   renderWitness(res.parsed);
-  renderReceiptSummary($("receipt-summary"), receipt);
+  renderReceiptSummary($("call-receipt-summary"), receipt);
   $("receipt").textContent = canonicalReceiptJson(receipt);
   renderSpec(receipt);
   $("determinism").textContent = "";
@@ -769,7 +773,7 @@ async function renderVerifiedReceipt(input, {
 // Feed the bundled document into the paste handler.  The example therefore
 // takes the same raw-document parsing, classification, and verification route
 // as a receipt the visitor pasted.
-async function renderBundledExampleReceipt(isCurrent = () => true) {
+async function renderBundledExampleReceipt(isCurrent = () => true, { scroll = true } = {}) {
   let document;
   try {
     const response = await fetch(BUNDLED_EXAMPLE_RECEIPT);
@@ -782,11 +786,21 @@ async function renderBundledExampleReceipt(isCurrent = () => true) {
   if (!isCurrent()) return;
   bundledExampleDocument = document.trim();
   $("paste-input").value = document;
-  return renderClassifiedReceiptDocument(document, { isExample: true, isCurrent });
+  return renderClassifiedReceiptDocument(document, { isExample: true, isCurrent, scroll });
 }
 
 let locationRenderVersion = 0;
 let bundledExampleDocument = null;
+
+// Fragments that name a section of this page are navigation, not receipts.
+// tools.html deep links (#check, #replay, #badge-sec, #spec) redirect here
+// with their fragment intact, so those anchors must never reach the receipt
+// pipeline as malformed receipt links.
+const NAV_ANCHOR_IDS = ["receipt-verify", "claims", "workbench", "check", "replay", "badge-sec", "spec"];
+function navAnchorTarget(hash) {
+  const id = hash.startsWith("#") ? hash.slice(1) : hash;
+  return NAV_ANCHOR_IDS.includes(id) ? document.getElementById(id) : null;
+}
 
 // Initial loads and live fragment changes take this same total route. The
 // generation guard prevents an older async verification or example fetch from
@@ -794,6 +808,17 @@ let bundledExampleDocument = null;
 async function renderLocationReceiptOrExample() {
   const version = ++locationRenderVersion;
   const isCurrent = () => version === locationRenderVersion;
+
+  // Navigation anchors: the browser scrolls to the section natively. A closed
+  // fold is opened so the link lands on content, and the page renders its
+  // bare-page state (the bundled example) without stealing the scroll.
+  const nav = navAnchorTarget(location.hash);
+  if (nav) {
+    paintReceiptState(false);
+    if (nav.tagName === "DETAILS") nav.open = true;
+    return renderBundledExampleReceipt(isCurrent, { scroll: false });
+  }
+
   const state = classifyReceiptFragment(location.hash);
 
   // Remove prior example-owned DOM synchronously, before any async work.
@@ -812,14 +837,14 @@ async function renderLocationReceiptOrExample() {
 // Route every received document the same way, regardless of whether it arrived
 // in a deep link or through the paste box.  A Spine receipt must never fall
 // through to the decision-receipt verifier merely because its transport changed.
-function renderClassifiedReceiptDocument(document_, { isExample = false, isCurrent = () => true } = {}) {
+function renderClassifiedReceiptDocument(document_, { isExample = false, isCurrent = () => true, scroll = true } = {}) {
   if (!isCurrent()) return;
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
   if (classified.family === "malformed")
     return showReceiptError("receipt document refused: " + classified.errors.join("; "), true, { isExample });
-  if (classified.family === "decision") return renderVerifiedReceipt(document_, { isExample, isCurrent });
+  if (classified.family === "decision") return renderVerifiedReceipt(document_, { isExample, isCurrent, scroll });
   if (classified.family === "spine") return showReceiptError(
     "This is a seal.spine/v1 proxy receipt, not the kernel decision-receipt format this page checks. " +
     "It is refused here rather than being treated as a decision receipt. Use the shipped Spine checker with the signer public key obtained out of band: " +
@@ -877,14 +902,15 @@ async function checkPasted(version = ++locationRenderVersion) {
 // --- wire up -----------------------------------------------------------------
 function init() {
   renderPageClaims(document);
-  // Checker page: the paste box. Workbench page: the tools. Wire what exists.
+  // One page carries both the paste box and the tools; wire what exists.
   if ($("paste-input")) {
     $("paste-input").addEventListener("input", onPasteInput);
     window.addEventListener("hashchange", renderLocationReceiptOrExample);
   }
 
   if ($("call-input")) {
-    $("call-input").value = EXAMPLES.block;
+    // The box starts empty: the visitor is invited to paste their own call;
+    // the paste-allow / paste-block buttons insert the matched example pair.
     for (const b of document.querySelectorAll(".ex")) {
       b.addEventListener("click", () => { $("call-input").value = EXAMPLES[b.dataset.ex]; });
     }

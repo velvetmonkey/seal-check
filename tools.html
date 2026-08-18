@@ -4,146 +4,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>seal-check audit workbench: run a call, replay attacks, map conformance</title>
-  <meta name="description" content="The seal-check audit workbench: paste an MCP tool-call and get a deterministic Allow/Block verdict and receipt from the verified seal kernel, replay known bypass attacks, generate the kernel-identity badge, and map receipts to the conformance profile. Runs entirely in your browser; no backend, no data leaves the page." />
+  <title>seal-check audit workbench - moved to the main page</title>
+  <meta name="robots" content="noindex" />
+  <link rel="canonical" href="index.html" />
+  <script type="module">
+    import { legacyToolsDestination, rememberLegacyToolsNavigation } from "./legacy-tools-redirect.js";
+    const destination = legacyToolsDestination(location.href);
+    rememberLegacyToolsNavigation(sessionStorage, destination, location.hash.slice(1));
+    location.replace(destination);
+  </script>
   <link rel="stylesheet" href="style.css" />
-  <!-- classic script installs window.SealModule (the compiled black-box kernel) -->
-  <script src="wasm/seal.js"></script>
 </head>
 <body>
-  <header class="wrap">
-    <h1>seal-check <span class="muted">· audit workbench</span></h1>
-    <div id="kernel-status" class="pill pill-wait" title="Binary identity of the kernel running in your browser">
-      checking kernel…
-    </div>
-    <p class="privacy">No backend. No accounts. No telemetry. Nothing you paste leaves this page.</p>
-    <p class="muted">Holding a receipt? That is checked on the <a href="index.html">front page</a>.
-      This page is for people auditing a boundary: it runs a tool-call through the same verified
-      kernel, replays known bypass attacks, and maps receipts to the conformance profile.</p>
-  </header>
-
   <main class="wrap">
-
-    <section id="more-tools">
-
-      <!-- CHECK A CALL -->
-      <details class="tool-fold" id="check" open>
-        <summary>Check a call — paste an MCP tool-call, get a deterministic Allow/Block verdict and a receipt</summary>
-        <p class="muted">Paste an MCP tool-call as JSON, either a JSON-RPC <code>tools/call</code> or a simple
-          <code>{ "tool", "args", "approvals" }</code> object. It runs against a standard multi-kernel policy.</p>
-        <div class="examples">
-          <button class="ex" data-ex="block">Load a blocked example</button>
-          <button class="ex" data-ex="allow">Load an allowed example</button>
-        </div>
-        <textarea id="call-input" spellcheck="false" rows="9" aria-label="MCP tool-call JSON"></textarea>
-        <div class="row">
-          <button id="run-btn" class="primary">Run through kernel</button>
-          <span id="run-error" class="error" role="alert"></span>
-        </div>
-
-        <div id="result" class="result hidden">
-          <div class="verdict-row">
-            <span id="verdict" class="verdict"></span>
-            <span id="deny-kernel" class="deny-kernel"></span>
-          </div>
-          <p id="reason" class="reason"></p>
-
-          <details id="witness-wrap" open>
-            <summary>Parse witness: per-gate seals (<span id="cert-count">0</span>)</summary>
-            <table id="witness"><thead><tr><th>kernel</th><th>verdict</th><th>reason</th><th>certHash</th></tr></thead><tbody></tbody></table>
-          </details>
-
-          <div class="receipt-head">
-            <h3>Decision receipt</h3>
-            <div class="receipt-actions">
-              <button id="download-receipt">Download receipt.json</button>
-              <button id="rerun-receipt" title="Run the same input again and confirm byte-identical output">Verify determinism</button>
-            </div>
-          </div>
-          <p id="determinism" class="determinism"></p>
-          <section class="receipt-summary" aria-labelledby="receipt-summary-heading">
-            <h4 id="receipt-summary-heading">Receipt summary</h4>
-            <div id="receipt-summary"></div>
-          </section>
-          <details class="receipt-evidence">
-            <summary>Full evidence: raw receipt JSON</summary>
-            <pre id="receipt" class="receipt"></pre>
-          </details>
-        </div>
-      </details>
-
-      <!-- REPLAY -->
-      <details class="tool-fold" id="replay">
-        <summary>Replay known bypass attacks — named traces that should not get through</summary>
-        <p class="muted">Each is a named trace that <em>should not</em> get through. One click runs it against the
-          live kernel; the verdict shown is the kernel's, read back from the receipt.</p>
-        <div class="row"><button id="replay-all" class="primary">Replay all</button>
-          <span id="replay-summary" class="muted"></span></div>
-        <div id="corpus" class="corpus"></div>
-      </details>
-
-      <!-- BADGE -->
-      <details class="tool-fold" id="badge-sec">
-        <summary>"seal-checked boundary" badge — carries the kernel's short sha256, nothing more</summary>
-        <p class="muted">A self-contained badge carrying the kernel's short sha256. It records that a call was
-          checked against this verified kernel binary, nothing more (see the claims panel below).</p>
-        <div id="badge-preview" class="badge-preview"></div>
-        <div class="row">
-          <button id="copy-badge-svg">Copy badge (SVG)</button>
-          <button id="copy-badge-md">Copy badge (Markdown)</button>
-          <span id="copy-status" class="muted"></span>
-        </div>
-      </details>
-
-      <!-- CONFORMANCE MAP -->
-      <details class="tool-fold" id="spec">
-        <summary>Conformance map <span class="spec-id">SEAL-MEDIATION-PROFILE-L0 v0</span></summary>
-        <p class="muted">Each field of the receipt from "Check a call", mapped to the profile clause it satisfies.
-          Run a call there to populate it. Spec:
-          <a href="docs/SEAL-MEDIATION-PROFILE-L0.md">docs/SEAL-MEDIATION-PROFILE-L0.md</a>.</p>
-        <p id="spec-empty" class="muted">Run a call above to map its receipt to the profile.</p>
-        <table id="spec-map" class="hidden"><thead><tr><th>receipt field</th><th>value</th><th>clause</th><th>requirement</th></tr></thead><tbody></tbody></table>
-      </details>
-    </section>
-
-    <!-- CLAIM DISCIPLINE — the same panel as the front page, verbatim, so the
-         limits sit next to the tools they bound. ------------------------------>
-    <section id="claims">
-      <h2>What this proves, and what it does not</h2>
-      <div class="claim-grid">
-        <div class="claim proves">
-          <h3>✓ What this proves</h3>
-          <p>For the exact call you supplied, this is the deterministic Allow/Block decision produced by the
-            seal mediation kernel whose binary <code>sha256</code> is shown above, executed in your browser.
-            That kernel's decision logic is the subject of public Lean&nbsp;4 proofs that assert the stated
-            mediation properties, <em>modulo their stated assumptions and the axioms
-            {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Same input → byte-identical receipt, every
-            reload. Nothing leaves your browser.</p>
-        </div>
-        <div class="claim notproves">
-          <h3>✗ What this does NOT prove</h3>
-          <p data-claims-not-proves></p>
-        </div>
-      </div>
-    </section>
+    <p>The audit workbench now lives on the <a href="index.html">seal-check page</a>.
+      This redirect preserves legacy query parameters and deep-link anchors.</p>
+    <p class="muted">If scripts are disabled, use the link above and add the original query or anchor.</p>
+    <p data-claims-not-proves></p>
   </main>
-
-  <footer class="wrap">
-    <h3>Kernel identity</h3>
-    <dl class="ident">
-      <dt>wasm sha256 <span class="lab lab-ok">self-verified in browser</span></dt>
-      <dd id="ident-sha" class="mono"></dd>
-      <dt>lean toolchain <span class="lab lab-asserted">asserted, not verified here</span></dt>
-      <dd class="mono">leanprover/lean4:v4.28.0</dd>
-      <dt>axiom footprint <span class="lab lab-asserted">asserted, not verified here</span></dt>
-      <dd class="mono">propext · Classical.choice · Quot.sound</dd>
-    </dl>
-    <p class="muted">seal-check is a client-side checker. The kernel runs as a compiled black-box evaluator;
-      its source proofs are public but are not re-checked in the browser.</p>
-    <p class="muted version">seal-check <strong>v0.1.0</strong> · profile
-      <a href="docs/SEAL-MEDIATION-PROFILE-L0.md">SEAL-MEDIATION-PROFILE-L0 v0</a> · Apache-2.0</p>
-  </footer>
-
-  <script type="module" src="app.js"></script>
 </body>
 </html>
