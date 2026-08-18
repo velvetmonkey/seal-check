@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>seal-check: re-check a seal decision receipt in your browser</title>
-  <meta name="description" content="Paste a seal decision receipt (or open a #receipt= link) and it is re-checked entirely in your browser: the request re-hashed, the verdict re-derived through the verified seal kernel, the signature verified. The same page runs a pasted MCP tool-call through the verified kernel, replays known bypass attacks, and maps receipts to the conformance profile. The page explains what that does and does not prove. No backend, no data leaves the page." />
+  <meta name="description" content="Paste a seal decision receipt (or open a #receipt= link) and it is re-checked entirely in your browser: the request re-hashed, the verdict re-derived through the verified seal kernel, the signature verified. The page explains what that does and does not prove. No backend, no data leaves the page." />
   <link rel="stylesheet" href="style.css" />
   <!-- classic script installs window.SealModule (the compiled black-box kernel) -->
   <script src="wasm/seal.js"></script>
@@ -118,105 +118,6 @@
       </div>
     </section>
 
-    <!-- AUDIT WORKBENCH — the former tools.html, folded into this page so the
-         reader never has to choose a page. Reader B starts here: run a call,
-         replay attacks, generate the badge, map conformance. The anchors
-         #check / #replay / #badge-sec / #spec are load-bearing: tools.html now
-         redirects here with its fragment preserved. --------------------------->
-    <section id="workbench">
-      <h2>Audit a boundary</h2>
-      <p class="muted">Is your MCP boundary <em>actually</em> mediated? The tools below run a tool-call
-        through the same verified kernel, replay known bypass attacks, and map receipts to the
-        conformance profile — for people auditing a boundary, not checking a receipt.</p>
-
-      <!-- CHECK A CALL -->
-      <details class="tool-fold" id="check" open>
-        <summary>Check a call — paste an MCP tool-call, get a deterministic Allow/Block verdict and a receipt</summary>
-        <p class="muted">Paste an MCP tool-call as JSON, either a JSON-RPC <code>tools/call</code> or a simple
-          <code>{ "tool", "args", "approvals" }</code> object. It runs against a standard multi-kernel policy.</p>
-        <div class="call-box-head">
-          <label class="paste-invite" for="call-input">Paste your own tool-call below — or start from an example:</label>
-          <div class="examples">
-            <button class="ex" data-ex="allow">Paste allow example</button>
-            <button class="ex" data-ex="block">Paste block example</button>
-          </div>
-        </div>
-        <textarea id="call-input" spellcheck="false" rows="9" aria-label="MCP tool-call JSON"
-          placeholder='your MCP tool-call as JSON — or insert an example with the buttons above'></textarea>
-        <p class="muted example-note">The two examples are the <strong>same call</strong> — same tool, same
-          arguments, twice. The only difference is the approval: the allow example carries a valid approval
-          target, the block example carries <code>"approvals": []</code>. The approval is what flips the
-          verdict.</p>
-        <div class="row">
-          <button id="run-btn" class="primary">Run through kernel</button>
-          <span id="run-error" class="error" role="alert"></span>
-        </div>
-
-        <div id="result" class="result hidden">
-          <div class="verdict-row">
-            <span id="verdict" class="verdict"></span>
-            <span id="deny-kernel" class="deny-kernel"></span>
-          </div>
-          <p id="reason" class="reason"></p>
-
-          <details id="witness-wrap" open>
-            <summary>Parse witness: per-gate seals (<span id="cert-count">0</span>)</summary>
-            <table id="witness"><thead><tr><th>kernel</th><th>verdict</th><th>reason</th><th>certHash</th></tr></thead><tbody></tbody></table>
-          </details>
-
-          <div class="receipt-head">
-            <h3>Decision receipt</h3>
-            <div class="receipt-actions">
-              <button id="download-receipt">Download receipt.json</button>
-              <button id="rerun-receipt" title="Run the same input again and confirm byte-identical output">Verify determinism</button>
-            </div>
-          </div>
-          <p id="determinism" class="determinism"></p>
-          <section class="receipt-summary" aria-labelledby="call-receipt-summary-heading">
-            <h4 id="call-receipt-summary-heading">Receipt summary</h4>
-            <div id="call-receipt-summary"></div>
-          </section>
-          <details class="receipt-evidence">
-            <summary>Full evidence: raw receipt JSON</summary>
-            <pre id="receipt" class="receipt"></pre>
-          </details>
-        </div>
-      </details>
-
-      <!-- REPLAY -->
-      <details class="tool-fold" id="replay">
-        <summary>Replay known bypass attacks — named traces that should not get through</summary>
-        <p class="muted">Each is a named trace that <em>should not</em> get through. One click runs it against the
-          live kernel; the verdict shown is the kernel's, read back from the receipt.</p>
-        <div class="row"><button id="replay-all" class="primary">Replay all</button>
-          <span id="replay-summary" class="muted"></span></div>
-        <div id="corpus" class="corpus"></div>
-      </details>
-
-      <!-- BADGE -->
-      <details class="tool-fold" id="badge-sec">
-        <summary>"seal-checked boundary" badge — carries the kernel's short sha256, nothing more</summary>
-        <p class="muted">A self-contained badge carrying the kernel's short sha256. It records that a call was
-          checked against this verified kernel binary, nothing more (see the claims panel below).</p>
-        <div id="badge-preview" class="badge-preview"></div>
-        <div class="row">
-          <button id="copy-badge-svg">Copy badge (SVG)</button>
-          <button id="copy-badge-md">Copy badge (Markdown)</button>
-          <span id="copy-status" class="muted"></span>
-        </div>
-      </details>
-
-      <!-- CONFORMANCE MAP -->
-      <details class="tool-fold" id="spec">
-        <summary>Conformance map <span class="spec-id">SEAL-MEDIATION-PROFILE-L0 v0</span></summary>
-        <p class="muted">Each field of the receipt from "Check a call", mapped to the profile clause it satisfies.
-          Run a call in "Check a call" above to populate it. Spec:
-          <a href="docs/SEAL-MEDIATION-PROFILE-L0.md">docs/SEAL-MEDIATION-PROFILE-L0.md</a>.</p>
-        <p id="spec-empty" class="muted">Run a call above to map its receipt to the profile.</p>
-        <table id="spec-map" class="hidden"><thead><tr><th>receipt field</th><th>value</th><th>clause</th><th>requirement</th></tr></thead><tbody></tbody></table>
-      </details>
-    </section>
-
     <!-- CLAIM DISCIPLINE (always visible, never folded; last on the page by the
          operator's ordering — Reader A first, Reader B next, the limits and the
          kernel identity last but never hidden) -------------------------------->
@@ -225,12 +126,13 @@
       <div class="claim-grid">
         <div class="claim proves">
           <h3>✓ What this proves</h3>
-          <p>For the exact call you supplied, this is the deterministic Allow/Block decision produced by the
-            seal mediation kernel whose binary <code>sha256</code> is shown above, executed in your browser.
-            That kernel's decision logic is the subject of public Lean&nbsp;4 proofs that assert the stated
-            mediation properties, <em>modulo their stated assumptions and the axioms
-            {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Same input → byte-identical receipt, every
-            reload. Nothing leaves your browser.</p>
+          <p>For the receipt you supplied, this page re-checks the receipt's committed request fingerprint,
+            signature, recorded kernel identity, and replayed decision against the verified seal mediation
+            kernel running in your browser. When those checks pass, the receipt is internally consistent for
+            the committed inputs it carries: the same request fingerprint and same verified kernel reproduce
+            the same decision and emitted bytes. That kernel's decision logic is the subject of public Lean&nbsp;4
+            proofs that assert the stated mediation properties, <em>modulo their stated assumptions and the
+            axioms {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Nothing leaves your browser.</p>
         </div>
         <div class="claim notproves">
           <h3>✗ What this does NOT prove</h3>
@@ -241,8 +143,8 @@
 
     <p id="legacy-receipt-summary" class="error" role="alert"><strong>Legacy anchor refused:</strong>
       <code>tools.html#receipt-summary</code> named a generated summary that no longer exists on this page.
-      Run a call in the audit workbench to create the current summary; this link was not silently redirected
-      to the different receipt summary above.</p>
+      The audit workbench summary has been removed. Paste or open a decision receipt to create the current
+      receipt-checker summary above; this link was not silently redirected to that different summary.</p>
   </main>
 
   <footer class="wrap">

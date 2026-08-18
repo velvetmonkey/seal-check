@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Every id in the former tools.html is accounted for. Result/control ids land
-// on the fold that owns them; the former generated receipt summary has no
-// equivalent before a call is run, so it lands on an explicit refusal notice.
+// Every id in the former tools.html is accounted for. Removed workbench ids
+// deliberately preserve their missing fragment so index.html shows the
+// unknown-anchor notice. The former generated receipt summary is a near-match
+// to the receipt-checker summary, so it still lands on an explicit refusal.
 export const LEGACY_TOOLS_ANCHOR_TARGETS = Object.freeze({
-  "kernel-status": "kernel-status", "more-tools": "workbench",
-  check: "check", "call-input": "check", "run-btn": "check", "run-error": "check",
-  result: "check", verdict: "check", "deny-kernel": "check", reason: "check",
-  "witness-wrap": "check", "cert-count": "check", witness: "check",
-  "download-receipt": "check", "rerun-receipt": "check", determinism: "check",
+  "kernel-status": "kernel-status", "more-tools": "more-tools",
+  check: "check", "call-input": "call-input", "run-btn": "run-btn", "run-error": "run-error",
+  result: "result", verdict: "verdict", "deny-kernel": "deny-kernel", reason: "reason",
+  "witness-wrap": "witness-wrap", "cert-count": "cert-count", witness: "witness",
+  "download-receipt": "download-receipt", "rerun-receipt": "rerun-receipt", determinism: "determinism",
   "receipt-summary-heading": "legacy-receipt-summary", "receipt-summary": "legacy-receipt-summary",
-  receipt: "check", replay: "replay", "replay-all": "replay", "replay-summary": "replay", corpus: "replay",
-  "badge-sec": "badge-sec", "badge-preview": "badge-sec", "copy-badge-svg": "badge-sec",
-  "copy-badge-md": "badge-sec", "copy-status": "badge-sec", spec: "spec", "spec-empty": "spec",
-  "spec-map": "spec", claims: "claims", "ident-sha": "ident-sha",
+  receipt: "receipt", replay: "replay", "replay-all": "replay-all", "replay-summary": "replay-summary", corpus: "corpus",
+  "badge-sec": "badge-sec", "badge-preview": "badge-preview", "copy-badge-svg": "copy-badge-svg",
+  "copy-badge-md": "copy-badge-md", "copy-status": "copy-status", spec: "spec", "spec-empty": "spec-empty",
+  "spec-map": "spec-map", claims: "claims", "ident-sha": "ident-sha",
 });
 
 export const LEGACY_TOOLS_NAVIGATION_KEY = "seal-check:legacy-tools-navigation";

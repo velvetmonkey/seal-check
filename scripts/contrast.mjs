@@ -61,55 +61,40 @@ function ratio(fg, bg) {
 // --- the declared inventory -------------------------------------------------
 // [foreground, background, threshold class, where it renders]
 // A name resolves to the --name custom property; a literal "#rrggbb" is a
-// colour hardcoded outside the palette (currently only the generated badge
-// SVG, which is copied off the page and so cannot use page tokens).
+// colour hardcoded outside the palette.
 
 const PAIRS = [
   // body copy
   ["ink", "bg", "body", "body copy, h1/h2/h3, .rv-subline, .rv-limit p, table cells"],
-  ["ink", "panel", "body", ".claim p, .card-attack, .tool-fold > summary, textarea"],
-  ["ink", "panel2", "body", "button label"],
+  ["ink", "panel", "body", ".claim p, textarea"],
   ["ink", "code-bg", "body", "<code> inside body copy"],
   ["muted", "bg", "body", ".muted, .privacy, th, details summary, .ident dd, .rv-table .rvt-detail"],
-  ["muted", "panel", "body", ".card-why, .tool-fold body copy, .copy-fallback"],
   ["muted", "code-bg", "body", "<code> inside .muted paragraphs"],
   ["muted", "bad-bg", "body", ".rv-table tr.rvt-row-fail td.rvt-detail"],
-  ["accent", "bg", "body", "links, .spec-ref, .spec-id"],
-  ["accent", "panel", "body", ".card-lens on a card, links inside .tool-fold"],
+  ["accent", "bg", "body", "links"],
 
   // verdict + state text (mono, 13px+, so held to the body threshold, not large)
-  ["ok", "bg", "body", ".v-allow, .rvt-pass, .determinism.ok, .card-result.ok, .rv-ok"],
-  ["ok", "panel", "body", ".card-result.ok inside a card, .claim.proves h3"],
+  ["ok", "bg", "body", ".v-allow, .rvt-pass, .rv-ok"],
+  ["ok", "panel", "body", ".claim.proves h3"],
   ["ok", "ok-bg", "body", ".pill-ok, .lab-ok, .rv-banner.ok .rv-headline"],
   ["bad", "bg", "body", ".v-block, .rvt-fail, .rv-fails li, .rv-bad, .error"],
-  ["bad", "panel", "body", ".card-result.bad inside a card"],
   ["bad", "bad-bg", "body", ".pill-bad, .rv-banner.bad text, .rvt-row-fail state cell, .legacy-fragment-notice"],
-  ["warn", "bg", "body", ".v-error, .rvt-skip, .reason.warn"],
+  ["warn", "bg", "body", ".v-error, .rvt-skip"],
   ["warn", "panel", "body", ".claim.notproves h3 on a panel"],
   ["warn", "warn-bg", "body", ".lab-asserted, .rv-banner.warn .rv-headline"],
   ["ink", "ok-bg", "body", ".rv-banner.ok .rv-subline"],
   ["ink", "bad-bg", "body", ".rv-banner.bad .rv-subline, .rvt-row-fail td"],
   ["ink", "warn-bg", "body", ".rv-banner.warn .rv-subline"],
 
-  // the one reversed-out control
-  ["primary-ink", "primary-bg", "body", "button.primary label"],
-
   // non-text UI boundaries
-  ["line", "bg", "ui", "section rules, table rules, card/panel/textarea/button borders"],
-  ["line", "panel", "ui", "borders of elements sitting on a panel"],
-  ["line", "panel2", "ui", "button border"],
-  ["accent", "bg", "ui", "button:hover border, focus ring"],
+  ["line", "bg", "ui", "section rules, table rules, claim and textarea borders"],
+  ["accent", "bg", "ui", "textarea focus ring"],
   ["ok-line", "bg", "ui", ".pill-ok, .claim.proves, .rv-banner.ok, .lab-ok borders"],
   ["ok-line", "ok-bg", "ui", "the same borders against their own fill"],
   ["bad-line", "bg", "ui", ".pill-bad, .rv-banner.bad borders"],
   ["bad-line", "bad-bg", "ui", "the same borders and .legacy-fragment-notice against their own fill"],
   ["warn-line", "bg", "ui", ".claim.notproves, .rv-banner.warn, .lab-asserted borders"],
   ["warn-line", "warn-bg", "ui", "the same borders against their own fill"],
-  ["primary-line", "bg", "ui", "button.primary border"],
-
-  // the generated badge SVG (app.js badgeSvg(); self-contained by design)
-  ["#ffffff", "#3a3a44", "body", "badge label text on the badge's left plate"],
-  ["#ffffff", "#0a7d61", "body", "badge sha text on the badge's right plate"],
 
   // large text (>=24px): the re-check headline
   ["ok", "ok-bg", "large", ".rv-headline in the pass state (clamped 26-38px, 700)"],

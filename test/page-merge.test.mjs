@@ -20,21 +20,35 @@ const oldIds = [
   "replay-summary", "corpus", "badge-sec", "badge-preview", "copy-badge-svg", "copy-badge-md", "copy-status",
   "spec", "spec-empty", "spec-map", "claims", "ident-sha",
 ];
+const goneWorkbenchIds = new Set([
+  "more-tools", "check", "call-input", "run-btn", "run-error", "result", "verdict", "deny-kernel", "reason",
+  "witness-wrap", "cert-count", "witness", "download-receipt", "rerun-receipt", "determinism", "receipt",
+  "replay", "replay-all", "replay-summary", "corpus", "badge-sec", "badge-preview", "copy-badge-svg",
+  "copy-badge-md", "copy-status", "spec", "spec-empty", "spec-map",
+]);
+const survivingLegacyTargets = new Set(["kernel-status", "legacy-receipt-summary", "claims", "ident-sha"]);
 
-test("merged workbench remains on index.html", () => {
+test("audit workbench was removed from index.html", () => {
   const html = readPage("index.html");
-  assert.match(html, /<section id="workbench">/);
-  for (const id of ["call-input", "run-btn", "replay-all", "badge-sec", "spec-map"]) {
-    assert.match(html, new RegExp(`id="${id}"`));
+  assert.doesNotMatch(html, /<section id="workbench">/);
+  for (const id of goneWorkbenchIds) {
+    assert.doesNotMatch(html, new RegExp(`id="${id}"`));
   }
-  assert.match(html, /id="call-receipt-summary"/);
+  assert.doesNotMatch(html, /id="call-receipt-summary"/);
 });
 
 test("every old tools.html id has a deliberate destination", () => {
   assert.deepEqual(new Set(oldIds), new Set(Object.keys(LEGACY_TOOLS_ANCHOR_TARGETS)));
   const html = readPage("index.html");
-  for (const target of Object.values(LEGACY_TOOLS_ANCHOR_TARGETS))
-    assert.match(html, new RegExp(`id="${target}"`));
+  for (const [oldId, target] of Object.entries(LEGACY_TOOLS_ANCHOR_TARGETS)) {
+    if (survivingLegacyTargets.has(target)) {
+      assert.match(html, new RegExp(`id="${target}"`), oldId);
+    } else {
+      assert.ok(goneWorkbenchIds.has(oldId), `${oldId} must be a declared removed workbench id`);
+      assert.doesNotMatch(html, new RegExp(`id="${target}"`), oldId);
+      assert.equal(new URL(legacyToolsDestination(`https://example.test/tools.html#${oldId}`)).hash, `#${oldId}`);
+    }
+  }
 });
 
 test("redirect preserves every query shape byte-for-byte", () => {
@@ -46,8 +60,8 @@ test("redirect preserves every query shape byte-for-byte", () => {
   }
 });
 
-test("more-tools lands on workbench and receipt-summary refuses the near-miss", () => {
-  assert.equal(new URL(legacyToolsDestination("https://example.test/tools.html#more-tools")).hash, "#workbench");
+test("deleted workbench anchors fall through and receipt-summary refuses the near-miss", () => {
+  assert.equal(new URL(legacyToolsDestination("https://example.test/tools.html#more-tools")).hash, "#more-tools");
   assert.equal(new URL(legacyToolsDestination("https://example.test/tools.html#receipt-summary")).hash, "#legacy-receipt-summary");
   assert.match(readPage("index.html"), /Legacy anchor refused/);
 });
@@ -83,12 +97,13 @@ function redirectControl(sourceHref) {
   return { collapsedMessage, destination: location, fragmentName, namedMessage, notice, result };
 }
 
-test("control 1: known old more-tools id lands on its section with no notice", () => {
+test("control 1: removed old more-tools id shows the missing-anchor notice", () => {
   assert.match(readPage("tools.html"), /rememberLegacyToolsNavigation\(sessionStorage/);
   const control = redirectControl("https://example.test/tools.html#more-tools");
-  assert.equal(control.destination.hash, "#workbench");
-  assert.equal(control.result, "found");
-  assert.equal(control.notice.hidden, true);
+  assert.equal(control.destination.hash, "#more-tools");
+  assert.equal(control.result, "missing");
+  assert.equal(control.notice.hidden, false);
+  assert.equal(control.fragmentName.textContent, "more-tools");
 });
 
 test("control 2: unknown old id shows a visible notice naming the requested fragment", () => {

@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// seal-check UI wiring. No kernel logic — it calls kernel.js, renders verdicts and
-// receipts, and replays the corpus. Pure client-side.
+// seal-check UI wiring. No kernel logic — it re-checks receipts client-side.
 import {
-  ready, verifyKernelSha, decideRaw, decideSeqRaw, buildReceipt, canonicalReceiptJson,
+  ready, verifyKernelSha,
 } from "./kernel.js";
-import { CFG_STANDARD, guardTarget } from "./seal-config.js";
-import { CORPUS } from "./corpus.js";
 import { b64urlToStr, verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
 import { classifyReceiptFragment } from "./fragment-classifier.js";
@@ -18,67 +15,9 @@ const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls)
 
 let SHA = null;       // {computed, pinned, match}
 let LOCKED = false;   // true if kernel mismatch — refuse to emit receipts
-let LAST = null;      // {decide:()=>Promise, inputBlock} for the determinism re-run
-
-// --- examples ---------------------------------------------------------------
-// A matched pair: the same tool and the same arguments, twice. The visible
-// difference is the approval, which flips the live CFG_STANDARD verdict.
-const EXAMPLE_TOOL = "db.execute";
-const EXAMPLE_ARGS = { database: "prod", sql: "drop table users" };
-const EXAMPLES = {
-  block: `{
-  "tool": "db.execute",
-  "args": { "database": "prod", "sql": "drop table users" },
-  "approvals": []
-}`,
-  allow: `{
-  "tool": "db.execute",
-  "args": { "database": "prod", "sql": "drop table users" },
-  "approvals": ["${guardTarget(EXAMPLE_TOOL, EXAMPLE_ARGS)}"]
-}`,
-};
-
 const BUNDLED_EXAMPLE_RECEIPT = new URL("examples/allow.receipt.json", import.meta.url);
 
-// --- input parsing -----------------------------------------------------------
-function parseApprovals(value) {
-  if (value == null) return [];
-  if (!Array.isArray(value)) throw new Error("approvals must be an array of 64-hex target strings");
-  return value.map((s) => {
-    if (typeof s !== "string" || !/^[0-9a-f]{64}$/.test(s)) {
-      throw new Error("approval targets must be lowercase 64-hex strings, got: " + JSON.stringify(s));
-    }
-    return s;
-  });
-}
-
-// Accept either a JSON-RPC 2.0 tools/call, or a simple {tool, args, approvals, now}.
-function parseCall(text) {
-  let o;
-  try { o = JSON.parse(text); } catch (e) { throw new Error("not valid JSON: " + e.message); }
-  if (o && o.method === "tools/call" && o.params) {
-    const approvals = parseApprovals(o.approvals);
-    return { tool: o.params.name, args: o.params.arguments || {}, approvals, now: 1000 };
-  }
-  if (o && typeof o.tool === "string") {
-    const approvals = parseApprovals(o.approvals);
-    return { tool: o.tool, args: o.args || {}, approvals, now: o.now ?? 1000 };
-  }
-  throw new Error('expected a JSON-RPC tools/call, or {"tool","args","approvals"}');
-}
-
-// (The v0 input-block builder is gone: schema v1 receipts carry the call as
-// tool/arguments/now/granted_capabilities, and buildReceipt derives the
-// canonical request line itself via the shared receipt-format.js.)
-
 // --- kernel boot + self-verification ----------------------------------------
-// One page (index.html) carries both the receipt checker and the audit
-// workbench; tools.html is a redirect stub. Element-presence guards remain so
-// a page variant carrying only some elements still boots.
-function disableToolButtons() {
-  for (const id of ["run-btn", "replay-all"]) { const b = $(id); if (b) b.disabled = true; }
-}
-
 async function boot() {
   const pill = $("kernel-status");
   // file:// blocks both the wasm fetch and SubtleCrypto. Tell the user the fix up front.
@@ -86,7 +25,6 @@ async function boot() {
     LOCKED = true;
     pill.className = "pill pill-bad";
     pill.textContent = "open over http, not file:// — run  python3 -m http.server 8000  then visit http://localhost:8000";
-    disableToolButtons();
     return;
   }
   try {
@@ -96,263 +34,16 @@ async function boot() {
       pill.className = "pill pill-ok";
       pill.textContent = `kernel verified · sha256 ${SHA.computed.slice(0, 8)}…`;
       await ready();
-      renderBadge();
       if ($("paste-input")) await renderLocationReceiptOrExample();
     } else {
       LOCKED = true;
       pill.className = "pill pill-bad";
       pill.textContent = "KERNEL MISMATCH — binary does not match the pinned sha256; receipts disabled";
-      disableToolButtons();
     }
   } catch (e) {
     LOCKED = true;
     pill.className = "pill pill-bad";
     pill.textContent = "kernel could not be verified: " + e.message;
-  }
-}
-
-// --- verdict + receipt rendering --------------------------------------------
-function paintVerdict(node, denyNode, parsed) {
-  const v = parsed.verdict === "DENY" ? "BLOCK" : parsed.verdict; // ALLOW|BLOCK|ERROR
-  node.textContent = v;
-  node.className = "verdict " + (v === "BLOCK" ? "v-block" : v === "ALLOW" ? "v-allow" : "v-error");
-  denyNode.textContent = parsed.deny_kernel ? `denied by: ${parsed.deny_kernel}` : "";
-}
-
-// --- conformance map (receipt field -> DECISION-RECEIPT-SCHEMA v1 section) -----
-// Each row: [field path, section ref(s), requirement title, value getter]. Documented
-// in docs/DECISION-RECEIPT-SCHEMA.md (vendored v1 normative spec). The L0 profile's §4
-// is the retired v0 Schema-K and is NOT the v1 field authority. Both block + allow
-// flow through renderSpec.
-const CLAUSE_MAP = [
-  ["seal_receipt", "§1", "receipt schema version (v1)", (r) => r.seal_receipt],
-  ["canonical_request", "§1 · §2", "canonical tools/call (parse witness)", (r) => r.canonical_request],
-  ["canonical_request_sha256", "§2 · §1", "request fingerprint (sha256)", (r) => r.canonical_request_sha256.slice(0, 12) + "…"],
-  ["now", "§1 · §7", "logical clock (determinism)", (r) => r.now],
-  ["granted_capabilities", "§3 · §1", "presented grants (approval targets)", (r) => JSON.stringify(r.granted_capabilities)],
-  ["verdict", "§5", "mediation-contract verdict", (r) => r.verdict],
-  ["reason", "§1", "decision reason", (r) => r.reason],
-  ["deny_kernel", "§1", "denying gate (null if allowed)", (r) => String(r.deny_kernel)],
-  ["emitted_bytes", "§1 · §7", "canonical decision bytes (verbatim)", (r) => `${r.emitted_bytes.length} bytes`],
-  ["certs", "§3 · §1", "per-gate seals", (r) => r.certs.map((c) => `${c.kernel}:${c.verdict}`).join(", ") || "—"],
-  ["certs[].certHash", "§3", "per-gate audit seal (u64)", (r) => r.certs.map((c) => c.certHash.slice(0, 8) + "…").join(", ") || "—"],
-  ["kernel_identity.wasm_sha256", "§4", "binary identity (self-verified)", (r) => r.kernel_identity.wasm_sha256.slice(0, 12) + "…"],
-  ["kernel_identity.self_verified", "§4", "verified in browser", (r) => String(r.kernel_identity.self_verified)],
-  ["asserted_provenance.lean_toolchain", "§4", "asserted, NOT verified here", (r) => r.asserted_provenance.lean_toolchain],
-  ["asserted_provenance.axioms", "§4", "asserted axiom footprint", (r) => r.asserted_provenance.axioms.join(", ")],
-  ["asserted_provenance.verified_in_browser", "§4", "MUST be false", (r) => String(r.asserted_provenance.verified_in_browser)],
-];
-
-function renderSpec(receipt) {
-  const tb = $("spec-map").querySelector("tbody");
-  tb.replaceChildren();
-  for (const [field, ref, title, get] of CLAUSE_MAP) {
-    let val;
-    try { val = String(get(receipt)); } catch { val = "—"; }
-    if (val.length > 84) val = val.slice(0, 84) + "…";
-    const tr = el("tr");
-    tr.append(el("td", "mono", field), el("td", "mono", val), el("td", "spec-ref", ref), el("td", null, title));
-    tb.append(tr);
-  }
-  $("spec-empty").classList.add("hidden");
-  $("spec-map").classList.remove("hidden");
-}
-
-function renderWitness(parsed) {
-  $("cert-count").textContent = String(parsed.certs.length);
-  const tb = $("witness").querySelector("tbody");
-  tb.replaceChildren();
-  for (const c of parsed.certs) {
-    const tr = el("tr");
-    tr.append(el("td", "mono", c.kernel), el("td", null, c.verdict), el("td", null, c.reason || ""), el("td", "mono", c.certHash));
-    tb.append(tr);
-  }
-}
-
-async function runInput() {
-  $("run-error").textContent = "";
-  if (LOCKED) { $("run-error").textContent = "kernel not verified — refusing to run."; return; }
-  let call;
-  try { call = parseCall($("call-input").value); } catch (e) { $("run-error").textContent = e.message; return; }
-
-  let res;
-  try { res = await decideRaw(CFG_STANDARD, call); }
-  catch (e) { $("run-error").textContent = "kernel error: " + e.message; return; }
-
-  const receipt = buildReceipt({ call, config: CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha: SHA, signedConfig: res.signedConfig });
-
-  paintVerdict($("verdict"), $("deny-kernel"), res.parsed);
-  $("reason").textContent = res.parsed.reason;
-  renderWitness(res.parsed);
-  renderReceiptSummary($("call-receipt-summary"), receipt);
-  $("receipt").textContent = canonicalReceiptJson(receipt);
-  renderSpec(receipt);
-  $("determinism").textContent = "";
-  $("result").classList.remove("hidden");
-
-  // capture for the determinism re-run + download
-  LAST = {
-    json: canonicalReceiptJson(receipt),
-    rerun: async () => {
-      const r2 = await decideRaw(CFG_STANDARD, call);
-      return canonicalReceiptJson(buildReceipt({
-        call, config: CFG_STANDARD, parsed: r2.parsed, raw: r2.raw, sha: SHA, signedConfig: r2.signedConfig,
-      }));
-    },
-  };
-}
-
-function downloadReceipt() {
-  if (!LAST) return;
-  const blob = new Blob([LAST.json], { type: "application/json" });
-  const a = el("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "receipt.json";
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-async function verifyDeterminism() {
-  if (!LAST) return;
-  const again = await LAST.rerun();
-  const same = again === LAST.json;
-  const d = $("determinism");
-  d.textContent = same
-    ? `✓ deterministic — re-ran the same input, byte-identical receipt (${again.length} bytes).`
-    : "✗ receipts differ between runs — this should never happen; the kernel may be non-deterministic.";
-  d.className = "determinism " + (same ? "ok" : "bad");
-}
-
-// --- corpus replay -----------------------------------------------------------
-function corpusCard(entry) {
-  const card = el("div", "card");
-  card.dataset.id = entry.id;
-  const head = el("div", "card-head");
-  head.append(el("span", "card-name", entry.name), el("span", "card-lens", entry.lens));
-  card.append(head);
-  card.append(el("p", "card-attack", entry.attack));
-  card.append(el("p", "card-why muted", entry.why));
-  const row = el("div", "row");
-  const btn = el("button", "replay-btn", "Replay");
-  const out = el("span", "card-result");
-  btn.addEventListener("click", () => replayOne(entry, out));
-  row.append(btn, out);
-  card.append(row);
-  return card;
-}
-
-async function replayOne(entry, out) {
-  if (LOCKED) { out.textContent = "kernel not verified"; out.className = "card-result bad"; return; }
-  out.textContent = "running…";
-  out.className = "card-result";
-  let res;
-  try {
-    res = entry.run === "seq"
-      ? await decideSeqRaw(entry.config, entry.steps, entry.tool)
-      : await decideRaw(entry.config, { tool: entry.tool, args: entry.args, approvals: entry.approvals });
-  } catch (e) { out.textContent = "error: " + e.message; out.className = "card-result bad"; return null; }
-
-  const v = res.parsed.verdict === "DENY" ? "BLOCK" : res.parsed.verdict;
-  const blocked = v === "BLOCK";
-  out.textContent = blocked
-    ? `BLOCK ✓  (${res.parsed.deny_kernel || "?"} · seal ${(res.parsed.certHash || "").slice(0, 10)}…)`
-    : `${v} ✗ expected BLOCK`;
-  out.className = "card-result " + (blocked ? "ok" : "bad");
-  return blocked;
-}
-
-async function replayAll() {
-  let blocked = 0;
-  for (const card of $("corpus").children) {
-    const entry = CORPUS.find((e) => e.id === card.dataset.id);
-    const out = card.querySelector(".card-result");
-    const ok = await replayOne(entry, out);
-    if (ok) blocked++;
-  }
-  $("replay-summary").textContent = `${blocked}/${CORPUS.length} blocked deterministically`;
-}
-
-// --- badge -------------------------------------------------------------------
-function badgeSvg() {
-  const sha = (SHA && SHA.computed ? SHA.computed : "").slice(0, 8);
-  const label = "seal-checked boundary";
-  const lw = 150, vw = 78, h = 20;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${lw + vw}" height="${h}" viewBox="0 0 ${lw + vw} ${h}" role="img" aria-label="${label}: ${sha}">
-  <rect width="${lw}" height="${h}" fill="#3a3a44"/>
-  <rect x="${lw}" width="${vw}" height="${h}" fill="#0a7d61"/>
-  <g fill="#fff" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="11">
-    <text x="8" y="14">${label}</text>
-    <text x="${lw + 8}" y="14">${sha}</text>
-  </g>
-</svg>`;
-}
-
-function badgeMarkdown() {
-  const sha = (SHA && SHA.computed ? SHA.computed : "").slice(0, 8);
-  return [
-    `**seal-checked boundary** — kernel \`sha256:${sha}…\` — verified client-side, no server.`,
-    `_Checks mediation of a supplied call against the verified seal kernel. Does not certify a whole server; no third-party (incl. ARIA) endorsement._`,
-  ].join("\n");
-}
-
-function renderBadge() {
-  const p = $("badge-preview");
-  if (p) p.innerHTML = badgeSvg();
-}
-
-// Clipboard with graceful degradation. navigator.clipboard.writeText is only
-// exposed in secure contexts (https / localhost); over plain http://<hostname> it is
-// absent/blocked. Fall back to a hidden <textarea> + execCommand('copy'), and if even
-// that fails, reveal the text pre-selected for a manual Ctrl+C. Returns a boolean.
-async function copyText(text) {
-  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
-    try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    ta.style.top = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    ta.setSelectionRange(0, text.length);
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    if (ok) return true;
-  } catch { /* fall through */ }
-  return false;
-}
-
-// Last resort when both clipboard paths fail: show a visible, pre-selected textarea.
-function revealForManualCopy(text) {
-  let ta = $("copy-fallback");
-  if (!ta) {
-    ta = document.createElement("textarea");
-    ta.id = "copy-fallback";
-    ta.className = "copy-fallback";
-    ta.setAttribute("readonly", "");
-    ta.rows = 3;
-    $("badge-sec").appendChild(ta);
-  }
-  ta.style.display = "block";
-  ta.value = text;
-  ta.focus();
-  ta.select();
-  ta.setSelectionRange(0, text.length);
-}
-
-async function copy(text, label) {
-  const ok = await copyText(text);
-  const fb = $("copy-fallback");
-  if (ok) {
-    $("copy-status").textContent = `${label} copied`;
-    if (fb) fb.style.display = "none";
-  } else {
-    $("copy-status").textContent = `${label}: copy blocked — select the text below and copy manually`;
-    revealForManualCopy(text);
   }
 }
 
@@ -793,10 +484,7 @@ let locationRenderVersion = 0;
 let bundledExampleDocument = null;
 
 // Fragments that name a section of this page are navigation, not receipts.
-// tools.html deep links (#check, #replay, #badge-sec, #spec) redirect here
-// with their fragment intact, so those anchors must never reach the receipt
-// pipeline as malformed receipt links.
-const NAV_ANCHOR_IDS = ["receipt-verify", "claims", "workbench", "check", "replay", "badge-sec", "spec"];
+const NAV_ANCHOR_IDS = ["receipt-verify", "claims"];
 function navAnchorTarget(hash) {
   const id = hash.startsWith("#") ? hash.slice(1) : hash;
   return NAV_ANCHOR_IDS.includes(id) ? document.getElementById(id) : null;
@@ -902,32 +590,10 @@ async function checkPasted(version = ++locationRenderVersion) {
 // --- wire up -----------------------------------------------------------------
 function init() {
   renderPageClaims(document);
-  // One page carries both the paste box and the tools; wire what exists.
+  // Wire the receipt checker.
   if ($("paste-input")) {
     $("paste-input").addEventListener("input", onPasteInput);
     window.addEventListener("hashchange", renderLocationReceiptOrExample);
-  }
-
-  if ($("call-input")) {
-    // The box starts empty: the visitor is invited to paste their own call;
-    // the paste-allow / paste-block buttons insert the matched example pair.
-    for (const b of document.querySelectorAll(".ex")) {
-      b.addEventListener("click", () => { $("call-input").value = EXAMPLES[b.dataset.ex]; });
-    }
-    $("run-btn").addEventListener("click", runInput);
-    $("download-receipt").addEventListener("click", downloadReceipt);
-    $("rerun-receipt").addEventListener("click", verifyDeterminism);
-  }
-
-  if ($("replay-all")) {
-    $("replay-all").addEventListener("click", replayAll);
-    const c = $("corpus");
-    for (const entry of CORPUS) c.append(corpusCard(entry));
-  }
-
-  if ($("copy-badge-svg")) {
-    $("copy-badge-svg").addEventListener("click", () => copy(badgeSvg(), "SVG"));
-    $("copy-badge-md").addEventListener("click", () => copy(badgeMarkdown(), "Markdown"));
   }
 
   boot();
