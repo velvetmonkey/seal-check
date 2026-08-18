@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
-import { LEGACY_TOOLS_ANCHOR_TARGETS, legacyToolsDestination } from "../legacy-tools-redirect.js";
+import {
+  LEGACY_TOOLS_ANCHOR_TARGETS,
+  legacyToolsDestination,
+  rememberLegacyToolsNavigation,
+  revealMissingLegacyToolsFragment,
+} from "../legacy-tools-redirect.js";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const readPage = (file) => readFileSync(resolve(ROOT, file), "utf8");
@@ -44,4 +49,69 @@ test("more-tools lands on workbench and receipt-summary refuses the near-miss", 
   assert.equal(new URL(legacyToolsDestination("https://example.test/tools.html#more-tools")).hash, "#workbench");
   assert.equal(new URL(legacyToolsDestination("https://example.test/tools.html#receipt-summary")).hash, "#legacy-receipt-summary");
   assert.match(readPage("index.html"), /Legacy anchor refused/);
+});
+
+function redirectControl(sourceHref) {
+  const destination = legacyToolsDestination(sourceHref);
+  const source = new URL(sourceHref);
+  const location = new URL(destination);
+  const stored = new Map();
+  const storage = {
+    getItem: (key) => stored.get(key) ?? null,
+    removeItem: (key) => stored.delete(key),
+    setItem: (key, value) => stored.set(key, value),
+  };
+  rememberLegacyToolsNavigation(storage, destination, source.hash.slice(1));
+
+  const notice = { hidden: true };
+  const fragmentName = { textContent: "" };
+  const ids = new Set([...readPage("index.html").matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+  const document = {
+    referrer: "",
+    getElementById(id) {
+      if (id === "legacy-missing-fragment") return notice;
+      if (id === "legacy-missing-fragment-name") return fragmentName;
+      return ids.has(id) ? { id } : null;
+    },
+  };
+  const result = revealMissingLegacyToolsFragment({ document, location, storage });
+  return { destination: location, fragmentName, notice, result };
+}
+
+test("control 1: known old more-tools id lands on its section with no notice", () => {
+  assert.match(readPage("tools.html"), /rememberLegacyToolsNavigation\(sessionStorage/);
+  const control = redirectControl("https://example.test/tools.html#more-tools");
+  assert.equal(control.destination.hash, "#workbench");
+  assert.equal(control.result, "found");
+  assert.equal(control.notice.hidden, true);
+});
+
+test("control 2: unknown old id shows a visible notice naming the requested fragment", () => {
+  assert.match(readPage("index.html"), /revealMissingLegacyToolsFragment\(\{ document, location, storage: sessionStorage \}\)/);
+  const control = redirectControl("https://example.test/tools.html#never-existed");
+  assert.equal(control.result, "missing", "unresolved legacy fragment must not fail silently");
+  assert.equal(control.notice.hidden, false);
+  assert.equal(control.fragmentName.textContent, "never-existed");
+  assert.match(readPage("index.html"), /This page moved[\s\S]*requested section[\s\S]*no longer exists/);
+});
+
+test("control 3: fragment matching is case-sensitive", () => {
+  const control = redirectControl("https://example.test/tools.html#MORE-TOOLS");
+  assert.equal(control.result, "missing", "case-mismatched legacy fragment must not be reported as found");
+  assert.equal(control.notice.hidden, false);
+  assert.equal(control.fragmentName.textContent, "MORE-TOOLS");
+});
+
+test("percent-encoded spelling is not normalized into a legacy id", () => {
+  const control = redirectControl("https://example.test/tools.html#more%2Dtools");
+  assert.equal(control.result, "missing", "encoded legacy fragment must be checked exactly as requested");
+  assert.equal(control.notice.hidden, false);
+  assert.equal(control.fragmentName.textContent, "more%2Dtools");
+});
+
+test("control 4: bare tools redirect has no fragment and shows no notice", () => {
+  const control = redirectControl("https://example.test/tools.html");
+  assert.equal(control.destination.hash, "");
+  assert.equal(control.result, "no-fragment");
+  assert.equal(control.notice.hidden, true);
 });

@@ -21,6 +21,11 @@
 
   <main class="wrap">
 
+    <section id="legacy-missing-fragment" class="legacy-fragment-notice" role="alert" hidden>
+      <strong>This page moved.</strong>
+      The requested section <code>#<span id="legacy-missing-fragment-name"></span></code> no longer exists.
+    </section>
+
     <!-- THE PAGE: paste box on top, the re-check result directly underneath.
          Everything a visitor must DO happens here, in the first screen.
          Everything else on the page is reading, reachable by scrolling. ------->
@@ -254,6 +259,10 @@
       <a href="docs/SEAL-MEDIATION-PROFILE-L0.md">SEAL-MEDIATION-PROFILE-L0 v0</a> · Apache-2.0</p>
   </footer>
 
+  <script type="module">
+    import { revealMissingLegacyToolsFragment } from "./legacy-tools-redirect.js";
+    revealMissingLegacyToolsFragment({ document, location, storage: sessionStorage });
+  </script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
