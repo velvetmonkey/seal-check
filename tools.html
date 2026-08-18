@@ -8,9 +8,13 @@
   <meta name="robots" content="noindex" />
   <link rel="canonical" href="index.html" />
   <script type="module">
-    import { legacyToolsDestination, rememberLegacyToolsNavigation } from "./legacy-tools-redirect.js";
+    import {
+      legacyToolsDestination,
+      legacyToolsRequestedHash,
+      rememberLegacyToolsNavigation,
+    } from "./legacy-tools-redirect.js";
     const destination = legacyToolsDestination(location.href);
-    rememberLegacyToolsNavigation(sessionStorage, destination, location.hash.slice(1));
+    rememberLegacyToolsNavigation(sessionStorage, destination, legacyToolsRequestedHash(location));
     location.replace(destination);
   </script>
   <link rel="stylesheet" href="style.css" />
