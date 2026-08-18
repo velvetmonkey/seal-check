@@ -55,7 +55,7 @@ function loadBrowser() {
 
 const urls = process.argv.slice(2);
 if (urls.length === 0) {
-  urls.push("http://127.0.0.1:8731/index.html", "http://127.0.0.1:8731/tools.html");
+  urls.push("http://127.0.0.1:8731/index.html");
 }
 
 const { chromium } = loadBrowser();
