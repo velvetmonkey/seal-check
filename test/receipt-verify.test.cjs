@@ -218,7 +218,8 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   check("b64url: malformed input throws (caught by the UI as a decode error)", threw);
 
   // CLI contract mirrors the authority tri-state all the way to process exit.
-  const cliDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-cli-"));
+  const { tmpdir } = require("./tmpdir.cjs");
+  const cliDir = tmpdir("seal-check-cli-");
   const cliReceipt = path.join(cliDir, "allow.json");
   fs.writeFileSync(cliReceipt, K.canonicalReceiptJson(genuine));
   const cli = (...args) => spawnSync(process.execPath,
@@ -235,7 +236,7 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   cliRun = cli(cliReceipt, "--expected-config-pubkey", "bad");
   check("verify-file CLI: malformed pin exits 2/usage",
     cliRun.status === 2 && cliRun.stderr.includes("usage:"));
-  fs.rmSync(cliDir, { recursive: true, force: true });
+  // tmpdir.cjs removes cliDir on exit unless KEEP_TMP=1.
 
   // --- §11.1 unparseable-request receipt: REAL seal-host receipt -------------
   // Produced by the native seal-host mint on the pinned argument-less call:

@@ -56,13 +56,14 @@ const cli = (...args) => spawnSync(process.execPath,
   // config-less parseable: delete signed_config -> format-layer hard fail.
   const receipt = JSON.parse(fs.readFileSync(passFile, "utf8"));
   delete receipt.signed_config;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-profile-"));
+  const { tmpdir } = require("./tmpdir.cjs");
+  const dir = tmpdir("seal-check-profile-");
   const configless = path.join(dir, "configless.receipt.json");
   fs.writeFileSync(configless, JSON.stringify(receipt, null, 2) + "\n");
   r = cli(configless, "--expected-config-pubkey", PIN);
   check("P-ENFORCE: config-less parseable -> exit 1 FAIL (binding required)",
     r.status === 1, `exit ${r.status}`);
-  fs.rmSync(dir, { recursive: true, force: true });
+  // tmpdir.cjs removes dir on exit unless KEEP_TMP=1.
 
   r = cli(reducedFile, "--expected-config-pubkey", PIN);
   check("P-ENFORCE: legit §11.1 + pin -> exit 4 REDUCED (distinct, not success, not invalid)",

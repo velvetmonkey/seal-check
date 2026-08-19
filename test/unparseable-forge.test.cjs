@@ -83,7 +83,8 @@ function writeCanonical(dir, name, receiptObj, F) {
   const R = await import(path.join(ROOT, "receipt.js"));
   const F = await import(path.join(ROOT, "receipt-format.js"));
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-forge-"));
+  const { tmpdir } = require("./tmpdir.cjs");
+  const dir = tmpdir("seal-check-forge-");
   const cli = (...args) => spawnSync(process.execPath,
     [path.join(ROOT, "test", "verify-file.cjs"), ...args], { encoding: "utf8" });
 
@@ -148,7 +149,7 @@ function writeCanonical(dir, name, receiptObj, F) {
     cBlue.status === 0 && cBlue.stdout.includes("AUTHORISED: signed by pinned operator key"),
     `status ${cBlue.status}: ${cBlue.stdout}${cBlue.stderr}`);
 
-  fs.rmSync(dir, { recursive: true, force: true });
+  // tmpdir.cjs removes dir on exit unless KEEP_TMP=1.
   console.log(failures === 0 ? "\nUNPARSEABLE-FORGE PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error("ERR", e); process.exit(1); });
