@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-// Browser port of seal/checker/seal-receipt-check.mjs.  Its canonicalisation
-// is a byte-for-byte COPY of the sealer's canonical function, not a second
-// independent implementation: a bug here can agree with the sealer's bug.
+// Browser implementation of the same receipt canonicalisation rule used by
+// seal/checker/seal-receipt-check.mjs. It is independently expressed with
+// TextEncoder and omits the sealer's input-refusal branches.
 import nacl from "./vendor/nacl.js";
 import { sha256Hex } from "./receipt-format.js";
 
