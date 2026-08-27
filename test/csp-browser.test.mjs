@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
+import { createSocket } from "node:dgram";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -39,7 +40,7 @@ function startStaticServer() {
   })));
 }
 
-test("CSP refuses cross-origin requests while same-origin receipt, wasm, and tamper checks work", async (t) => {
+test("CSP blocks cross-origin requests and WebRTC while same-origin receipt, wasm, and tamper checks work", async (t) => {
   let playwright;
   try {
     playwright = require("playwright");
@@ -50,12 +51,19 @@ test("CSP refuses cross-origin requests while same-origin receipt, wasm, and tam
 
   const { server, url } = await startStaticServer();
   t.after(() => server.close());
-  const browser = await playwright.chromium.launch({ headless: true });
+  const browser = await playwright.chromium.launch({
+    headless: true,
+    executablePath: process.env.CHROME_FOR_TESTING || undefined,
+  });
   t.after(() => browser.close());
   const page = await browser.newPage();
   const refusals = [];
+  const consoleErrors = [];
   page.on("console", (message) => {
-    if (message.type() === "error" && /Refused to connect/.test(message.text())) refusals.push(message.text());
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+      if (/Refused to connect/.test(message.text())) refusals.push(message.text());
+    }
   });
 
   await page.goto(url, { waitUntil: "networkidle" });
@@ -83,6 +91,40 @@ test("CSP refuses cross-origin requests while same-origin receipt, wasm, and tam
   assert.equal(result.status, "rejected");
   assert.ok(refusals.length > 0, "the browser emitted no observable CSP refusal");
   console.log(`CSP refusal: ${refusals[0]}`);
+
+  const sink = createSocket("udp4");
+  const packets = [];
+  sink.on("message", (message, remote) => packets.push({ bytes: message.length, address: remote.address, port: remote.port }));
+  await new Promise((resolve) => sink.bind(0, "127.0.0.1", resolve));
+  t.after(() => sink.close());
+  const sinkPort = sink.address().port;
+  const webrtcResult = await page.evaluate(async (port) => {
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: `stun:127.0.0.1:${port}` }] });
+      pc.createDataChannel("seal-check-negative-control");
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === "complete") return resolve();
+        pc.onicegatheringstatechange = () => pc.iceGatheringState === "complete" && resolve();
+        setTimeout(resolve, 1000);
+      });
+      const result = {
+        status: pc.iceGatheringState === "complete" && !pc.localDescription.sdp.includes("a=candidate:") ? "blocked" : "not-blocked",
+        connection: pc.connectionState,
+        ice: pc.iceConnectionState,
+      };
+      pc.close();
+      return result;
+    } catch (error) {
+      return { status: "rejected", name: error.name, message: error.message };
+    }
+  }, sinkPort);
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(packets.length, 0, `WebRTC sink received ${JSON.stringify(packets)}`);
+  console.log(`WebRTC browser result: ${JSON.stringify(webrtcResult)}`);
+  console.log(`WebRTC browser errors: ${JSON.stringify(consoleErrors)}`);
+  console.log("WebRTC sink: empty (0 UDP packets received).");
 
   const receipt = await readFile(new URL("../examples/allow.receipt.json", import.meta.url), "utf8");
   const tampered = receipt.replace('"verdict": "ALLOW"', '"verdict": "BLOCK"');
