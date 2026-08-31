@@ -152,7 +152,8 @@ const text = (f) => fs.readFileSync(path.join(__dirname, "fixtures", f), "utf8")
   // carrying a duplicated discriminator must never exit 0.
   // (The library-level refusal is asserted above; the shipped verifier's own
   // seam — verifyReceipt(document) — is asserted in receipt-verify.test.cjs.)
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seal-doc-"));
+  const { tmpdir } = require("./tmpdir.cjs");
+  const tmp = tmpdir("seal-doc-");
   const dupFile = path.join(tmp, "dup.receipt.json");
   fs.writeFileSync(dupFile, a9forged);
   let cliOut = "", cliCode = 0;
@@ -165,7 +166,7 @@ const text = (f) => fs.readFileSync(path.join(__dirname, "fixtures", f), "utf8")
   }
   check("CLI on a duplicate-discriminator file exits 1", cliCode, 1);
   check("CLI does not report it as an authorised receipt", /AUTHORISED/.test(cliOut), false);
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // tmpdir.cjs removes tmp on exit unless KEEP_TMP=1.
 
   console.log(failures === 0 ? "\nDOCUMENT (§12.6) PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
