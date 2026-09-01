@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AK5Bu0f7o4EZTqoUCG9dSjc9tYd2lU86v+uX+vsOKSc='; img-src 'self'; style-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; webrtc 'block'" />
   <title>seal-check: re-check a seal decision receipt in your browser</title>
-  <meta name="description" content="Paste a seal decision receipt (or open a #receipt= link) and it is re-checked entirely in your browser: the request re-hashed, the verdict re-derived through the verified seal kernel, the signature verified. The page explains what that does and does not prove. Cross-origin content and connections are blocked. The policy declares WebRTC blocked; browsers that do not support that directive may still send WebRTC traffic. Top-level navigation remains possible: window.open, links, and meta refresh can send data in a URL to another site." />
+  <meta name="description" content="Paste a seal decision receipt (or open a #receipt= link) and it is re-checked entirely in your browser: the request re-hashed, the verdict re-derived through the verified seal kernel, the signature verified. The page explains what that does and does not prove. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Top-level navigation remains possible: window.open, links, and meta refresh can send data in a URL to another site." />
   <link rel="stylesheet" href="style.css" />
   <!-- classic script installs window.SealModule (the compiled black-box kernel) -->
   <script src="wasm/seal.js"></script>
@@ -17,7 +17,7 @@
     <div id="kernel-status" class="pill pill-wait" title="Binary identity of the kernel running in your browser">
       checking kernel…
     </div>
-    <p class="privacy">No backend. No accounts. No telemetry. Cross-origin content and connections are blocked. The policy declares WebRTC blocked; browsers that do not support that directive may still send WebRTC traffic. Important exception: top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
+    <p class="privacy">No backend. No accounts. No telemetry. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Important exception: top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
   </header>
 
   <main class="wrap">
@@ -33,7 +33,7 @@
          Everything a visitor must DO happens here, in the first screen.
          Everything else on the page is reading, reachable by scrolling. ------->
     <section id="receipt-verify">
-      <label class="paste-label" for="paste-input">Paste a seal decision receipt below (cross-origin content and connections are blocked; unsupported browsers may still send WebRTC traffic; top-level navigation can send data in a URL)</label>
+      <label class="paste-label" for="paste-input">Paste a seal decision receipt below (cross-origin content and connections are blocked; Chromium does not enforce the WebRTC directive and may send WebRTC traffic; top-level navigation can send data in a URL)</label>
       <textarea id="paste-input" spellcheck="false" rows="6" autocomplete="off"
         aria-label="Seal decision receipt"
         placeholder="the receipt JSON — or a link containing #receipt=…"></textarea>
@@ -67,7 +67,7 @@
           <span id="rv-deny" class="deny-kernel"></span>
         </div>
 
-        <p class="privacy">This check ran entirely in your browser, just now. Cross-origin content and connections are blocked. The policy declares WebRTC blocked; browsers that do not support that directive may still send WebRTC traffic. Important exception: top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
+        <p class="privacy">This check ran entirely in your browser, just now. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Important exception: top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
 
         <section class="receipt-summary" aria-labelledby="receipt-summary-heading">
           <h3 id="receipt-summary-heading">Receipt summary</h3>
@@ -113,7 +113,7 @@
             <summary>the receipt (raw JSON)</summary>
             <pre id="rv-json" class="receipt"></pre>
           </details>
-          <p class="muted">Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel. Cross-origin content and connections are blocked. The policy declares WebRTC blocked; browsers that do not support that directive may still send WebRTC traffic. Top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
+          <p class="muted">Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
           <p class="muted">Scope: seal-check verifies the <em>decision</em> over its committed inputs (kernel binary hash, request fingerprint, re-derived verdict, emitted bytes). It does <em>not</em> check that granted capabilities correspond to a policy-authorized target — this box accepts arbitrary target commitments (fire-your-own-target), so grants are carried as opaque commitments by design.</p>
         </details>
       </div>
@@ -133,7 +133,7 @@
             the committed inputs it carries: the same request fingerprint and same verified kernel reproduce
             the same decision and emitted bytes. That kernel's decision logic is the subject of public Lean&nbsp;4
             proofs that assert the stated mediation properties, <em>modulo their stated assumptions and the
-            axioms {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Cross-origin content and connections are blocked. The policy declares WebRTC blocked; browsers that do not support that directive may still send WebRTC traffic. Important exception: top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
+            axioms {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Important exception: top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
         </div>
         <div class="claim notproves">
           <h3>✗ What this does NOT prove</h3>
