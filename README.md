@@ -58,7 +58,7 @@ Receipt replay proves receipt↔kernel consistency. The separate 13/13 wasm-vers
 > **Claim:** policy-covered request-effects recognised by the compatible MCP boundary reach the downstream child MCP server only after every applicable Lean kernel returns Allow. Effects configured as guarded additionally require a matching live approval record. Seam failures block; every mediated decision emits replayable evidence.
 > **Non-claim:** the deployed host is not proved end to end, and canonical parser rejection is not currently the runtime gate. Host `ApprovalRecord` tokens are a separate signed channel from the v2 kernel-defined approval tuple. “Canonical” in Seal names the pinned kernel byte rule, not RFC 8785/JCS. Seal verifies the configured authorization evidence. Whether that evidence represents the intended human, device or service is an identity and key-custody assumption, not a proved property.
 <!-- truthbox:end -->
-> Map: [EVALUATOR-START.md](https://github.com/velvetmonkey/seal/blob/main/EVALUATOR-START.md) · profile detail: [PROFILE.md](https://github.com/velvetmonkey/seal-host/blob/main/PROFILE.md) — both in public repos; the links resolve for everyone.
+> Map: [EVALUATOR-START.md](https://github.com/velvetmonkey/seal/blob/main/docs/assurance/evaluator-start.md) · profile detail: [PROFILE.md](https://github.com/velvetmonkey/seal-host/blob/main/PROFILE.md) — both in public repos; the links resolve for everyone.
 
 <!-- TODO(asset, shot #4): real screenshot — the verdict row + decision-receipt panel
      (Allow/Block + the JSON receipt) from the live page. It IS the product; capture it,
@@ -77,7 +77,7 @@ Nothing you paste leaves the page. The page verifies a decision artifact; it doe
 
 Seal's proof story is intentionally narrow. The Lean theorems cover the mediation kernel and selected model properties. The binaries and browser artifacts are connected to that proof by reproducible conformance tests, not by a theorem about every compiled instruction. For this page's wasm specifically, a differential harness drives identical inputs through the deployed `seal.wasm` and the proven model: currently 13/13 mediation-corpus adversarial cases agree with 0 disagreements — evidence, not a theorem ([assurance statement](docs/SEAL-ASSURANCE-STATEMENT.md)).
 
-Start with the family [claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/CLAIMS-MATRIX.md) (one table: proven / tested / assumed / not claimed) and [What Seal is NOT](https://github.com/velvetmonkey/seal-assurance-kit/blob/main/docs/WHAT-SEAL-IS-NOT.md), then [docs/PROOF-REFERENCE.md](docs/PROOF-REFERENCE.md) for theorem names and file locations, [docs/CONFORMANCE.md](docs/CONFORMANCE.md) for the byte-identity claim, and [docs/TCB.md](docs/TCB.md) for what remains trusted.
+Start with the family [claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/archive/CLAIMS-MATRIX.md) (one table: proven / tested / assumed / not claimed) and [What Seal is NOT](https://github.com/velvetmonkey/seal-assurance-kit/blob/main/docs/WHAT-SEAL-IS-NOT.md), then [docs/PROOF-REFERENCE.md](docs/PROOF-REFERENCE.md) for theorem names and file locations, [docs/CONFORMANCE.md](docs/CONFORMANCE.md) for the byte-identity claim, and [docs/TCB.md](docs/TCB.md) for what remains trusted.
 
 Mandatory non-claims (canonical copy: [docs/LIMITATIONS.md](docs/LIMITATIONS.md)):
 
@@ -123,13 +123,13 @@ _The Seal fleet repositories are public; these links resolve for everyone. `witn
 - [seal-check](https://github.com/velvetmonkey/seal-check): Don't trust. Verify.
 - [seal-live-demo](https://github.com/velvetmonkey/seal-live-demo): Watch it work.
 - [seal-assurance-kit](https://github.com/velvetmonkey/seal-assurance-kit): Check your own boundary.
-- [witness-check](https://github.com/velvetmonkey/witness-check): The sufficiency analyzer. (proprietary)
+- witness-check: The sufficiency analyzer. (proprietary; no public repository link)
 - [seal-verify-action](https://github.com/velvetmonkey/seal-verify-action): Gate receipts in CI.
 
 ## Documentation
 
 - [What Seal is NOT](https://github.com/velvetmonkey/seal-assurance-kit/blob/main/docs/WHAT-SEAL-IS-NOT.md) — read this first (public kit repo)
-- [Family claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/CLAIMS-MATRIX.md) · [family architecture map](https://github.com/velvetmonkey/seal/blob/main/docs/ARCHITECTURE.md) (public umbrella)
+- [Family claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/archive/CLAIMS-MATRIX.md) · [family architecture map](https://github.com/velvetmonkey/seal/blob/main/docs/assurance/architecture.md) (public umbrella)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Threat model](docs/THREAT-MODEL.md)
 - [Assumptions](docs/ASSUMPTIONS.md)
