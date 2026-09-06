@@ -4,7 +4,7 @@ export const KERNEL_HASH_SCOPE_LIMIT_TEXT =
   "That field does not, by itself, describe your whole MCP server, your transport, your tool implementations, or whether your deployment routes calls through this gate.";
 
 export const CLAIMS_NOT_PROVES_HTML = [
-  "This page shows one kernel binary hash in <code>kernel_identity.wasm_sha256</code>.",
+  "This page verifies its own kernel binary hash. Kernel decision receipts additionally name a producer binary in <code>kernel_identity.wasm_sha256</code>; Protect and Spine receipts do not.",
   KERNEL_HASH_SCOPE_LIMIT_TEXT,
   "It does <strong>not</strong> prove the axioms or the Lean proofs themselves.",
   "No third party certifies anything here.",

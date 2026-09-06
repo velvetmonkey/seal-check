@@ -190,3 +190,9 @@ body.receipt-mode header h1 { font-size: 17px; }
 .rv-limit p { color: var(--ink); }
 #rv-tech { margin-top: 12px; }
 #rv-tech > summary { font-size: 14.5px; }
+
+/* Local receipt/key file controls share the existing page palette. */
+#signer-controls { margin: 12px 0; }
+#signer-controls label { display: block; margin-top: 8px; }
+#signer-key { width: 100%; box-sizing: border-box; font: inherit; }
+#receipt-file, #signer-file { max-width: 100%; margin: 8px 0; }
