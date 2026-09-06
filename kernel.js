@@ -234,3 +234,24 @@ export function buildReceipt({ call, config, parsed, raw, sha, signedConfig }) {
 export function canonicalReceiptJson(receipt) {
   return JSON.stringify(receipt, null, 2) + "\n";
 }
+
+// Protect v2 signs the whole receipt, not a signed_config envelope. The caller
+// checks that signature first. This temporary local envelope only initialises
+// the verifier-local kernel, just as the shipped decision-runner does; it is
+// never evidence of the producer's signature, kernel identity or authority.
+export async function replayProtectRaw(config, input) {
+  const identity = await verifyKernelSha();
+  if (!identity.match) throw new Error("verifier-local kernel hash mismatch");
+  const M = await mod();
+  const local = await buildSignedConfig(config);
+  const init = JSON.parse(M.ccall("seal_init", "string", ["string", "string"], [local.envelope, local.pubkey]));
+  if (init.ok !== true) throw new Error("seal_init failed: " + JSON.stringify(init));
+  const { tool, args, approvals, now, votes, grants, forecasts, granted_capabilities } = input;
+  const step = JSON.stringify({
+    line: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: args } }),
+    now, approvals: approvals.map((target) => ({ target })), votes, grants, forecasts, granted_capabilities,
+  });
+  const raw = M.ccall("seal_decide", "string", ["string"], [step]);
+  const result = JSON.parse(raw);
+  return { raw, verdict: result.error ? "ERROR" : result.route === "block" ? "BLOCK" : "ALLOW" };
+}

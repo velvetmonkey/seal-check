@@ -22,6 +22,27 @@ python3 -m http.server 8000   # then open http://localhost:8000 and hit "Verify 
 
 The page bundles the pinned wasm kernel (sha256 `28bb3ae7…`, re-hashed in your browser against the pinned constant), re-runs it over the exact bytes, and shows the verdict row. Browser deep links are deliberately **UNPINNED**: they verify signature and replay consistency but do not establish operator authority. Nothing leaves the browser.
 
+## Protect and Spine receipts
+
+Open the page, choose your receipt JSON file, then choose the separately obtained
+signer public key file (or paste its 64 hexadecimal characters). No checkout or
+terminal is needed by the visitor. Nothing is uploaded.
+
+For a reproducible Protect example, use [this untouched BLOCK receipt](examples/protect-block.receipt.json)
+and its [demo public key](examples/protect-signer.pub). They were emitted together by
+`seal demo` from seal commit `858d2cd`; this example demonstrates self-consistency,
+not independently trusted operator identity. Protect v2 checks the whole-receipt
+signature, argument/config commitments and verifier-local kernel verdict. The
+receipt contains no producer kernel identity, so the page makes no claim to have
+identified or re-run that producer's binary. Authority and event occurrence remain
+unverified. The browser port follows `checker/seal-receipt-v2.mjs` at that commit;
+its JSON scanner additionally accepts ordinary whitespace between object members.
+
+Older `seal.spine/v1` receipts use the existing Spine verifier: signature plus
+decision, tool, arguments and effect bindings. That family does not support kernel
+replay. Both families keep the signer key separate from receipt/link contents.
+The existing signed-config decision-receipt checks remain in their own route.
+
 ## Two honest paths
 
 **1-minute showcase — two honest paths**

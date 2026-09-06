@@ -303,6 +303,53 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   cliUnp = cli(unpPath);
   check("verify-file CLI: unparseable without pin exits 3/UNPINNED", cliUnp.status === 3);
 
+  // Untouched receipt emitted by the current shipped seal demo. Protect is
+  // checked by its whole-body signature format; host validation stays strict.
+  const P = await import(path.join(ROOT, "protect-receipt.js"));
+  const protectText = fs.readFileSync(path.join(ROOT, "examples/protect-block.receipt.json"), "utf8");
+  const publicKeyHex = fs.readFileSync(path.join(ROOT, "examples/protect-signer.pub"), "utf8").trim();
+  const protect = await P.verify(protectText, { publicKeyHex });
+  check("Protect demo: signature and verifier-local replay pass", protect.signature && protect.replay && protect.validate);
+  check("Protect demo: authority and occurrence remain unverified", protect.verify === false && protect.occurrence === "NOT ESTABLISHED" && protect.authority === "UNPINNED / CALLER-SUPPLIED");
+  check("Protect: ordinary JSON whitespace preserves the signed value", (await P.verify(JSON.stringify(JSON.parse(protectText), null, 2), { publicKeyHex })).signature === true);
+  const missingKey = await P.verify(protectText);
+  check("Protect demo: no key never verifies signature", missingKey.signature === false && missingKey.verify === false);
+  const refuses = async (name, text, code, options = { publicKeyHex }) => {
+    try { await P.verify(text, options); check(name, false, "accepted malformed receipt"); }
+    catch (error) { check(name, error.code === code, error.code + ": " + error.message); }
+  };
+  await refuses("Protect: one changed signed byte refuses", protectText.replace('seal demo wrote', 'Seal demo wrote'), "commitment_mismatch");
+  await refuses("Protect: wrong signer refuses", protectText, "signature_mismatch", { publicKeyHex: cfg.PUBKEY });
+  const changed = JSON.parse(protectText);
+  changed.signature.value = flipHexChar(changed.signature.value);
+  await refuses("Protect: signature tamper refuses", JSON.stringify(changed), "signature_mismatch");
+  await refuses("Protect: nested duplicate refuses before parse", protectText.replace('"line":', '"line":"hidden","line":'), "duplicate_member");
+  await refuses("Protect: unknown member cannot downgrade host checks", protectText.replace('"tool":', '"bypass":true,"tool":'), "member_order");
+  await refuses("Protect: host v2 never passes Protect validation", genuineDoc, "member_order");
+  check("Protect: host verifier still refuses Protect shape", (await R.verifyReceipt(protectText)).formatOk === false);
+  const reordered = JSON.parse(protectText);
+  delete reordered.signature;
+  reordered.signature = { algorithm: "ed25519", value: "0".repeat(128), public_key: publicKeyHex };
+  await refuses("Protect: embedded key cannot substitute for caller key", JSON.stringify(reordered), "unexpected_member");
+  await refuses("Protect: unsafe numbers refused", protectText.replace(/"now":\d+/, '"now":9007199254740992'), "invalid_receipt");
+  await refuses("Protect: false authority inputs refused", protectText, "invalid_receipt", { publicKeyHex, authorityRoot: "claimed" });
+  // Re-sign a contradictory claim with a test key: signature success must
+  // never replace actual kernel replay. Digests/signatures use real crypto.
+  const crypto = require("node:crypto");
+  const pair = crypto.generateKeyPairSync("ed25519");
+  const reSign = (record) => {
+    delete record.signature;
+    record.signature = { algorithm: "ed25519", value: crypto.sign(null, Buffer.from(P.canonical(record)), pair.privateKey).toString("hex") };
+    return JSON.stringify(record);
+  };
+  const localKey = { publicKeyHex: pair.publicKey.export({ type: "spki", format: "der" }).subarray(-32).toString("hex") };
+  const wrongVerdict = JSON.parse(protectText); wrongVerdict.verdict = "ALLOW";
+  await refuses("Protect: valid signature cannot hide false verdict", reSign(wrongVerdict), "verdict_mismatch", localKey);
+  const wrongAction = JSON.parse(protectText); wrongAction.action = "ALLOW";
+  await refuses("Protect: action ALLOW requires replay ALLOW", reSign(wrongAction), "action_verdict_mismatch", localKey);
+  const inert = JSON.parse(protectText); inert.kernel_inputs.grants = "ignored";
+  await refuses("Protect: nonempty inert kernel input refuses", reSign(inert), "inert_input", localKey);
+
   console.log(failures === 0 ? "\nRECEIPT-VERIFY (negative paths) PASS" : `\n${failures} FAILURE(S)`);
   process.exit(failures === 0 ? 0 : 1);
 })().catch((e) => { console.error("ERR", e); process.exit(1); });

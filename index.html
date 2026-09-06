@@ -33,10 +33,22 @@
          Everything a visitor must DO happens here, in the first screen.
          Everything else on the page is reading, reachable by scrolling. ------->
     <section id="receipt-verify">
-      <label class="paste-label" for="paste-input">Paste a seal decision receipt below (cross-origin content and connections are blocked; Chromium does not enforce the WebRTC directive and may send WebRTC traffic; top-level navigation can send data in a URL)</label>
+      <label class="paste-label" for="paste-input">Paste or open a Seal receipt (cross-origin content and connections are blocked; Chromium does not enforce the WebRTC directive and may send WebRTC traffic; top-level navigation can send data in a URL)</label>
       <textarea id="paste-input" spellcheck="false" rows="6" autocomplete="off"
         aria-label="Seal decision receipt"
         placeholder="the receipt JSON — or a link containing #receipt=…"></textarea>
+      <label for="receipt-file">Or open a receipt file</label>
+      <input id="receipt-file" type="file" accept=".json,application/json" />
+      <div id="signer-controls" hidden>
+        <label for="signer-key">Signer public key (64 hexadecimal characters)</label>
+        <input id="signer-key" type="text" spellcheck="false" autocomplete="off" size="64"
+          aria-describedby="signer-help" />
+        <label for="signer-file">Or open the signer's public key file</label>
+        <input id="signer-file" type="file" accept=".pub,.txt,text/plain" />
+        <p id="signer-help" class="muted">Obtain this public key from a source you trust, separately from the receipt.
+          For your own demo, open its receipt-signer.pub file. That demonstrates self-consistency;
+          it does not establish operator authority. Never enter a private key.</p>
+      </div>
       <p id="paste-error" class="error" role="alert"></p>
       <p class="muted deep-hint">Receipts also travel as deep links: opening this page with
         <code>#receipt=&lt;base64url of the receipt JSON&gt;</code> (that is how seal-live-demo hands
@@ -74,7 +86,7 @@
           <div id="receipt-summary"></div>
         </section>
 
-        <div class="rv-plain">
+        <div class="rv-plain" data-decision-only>
           <h3>What am I looking at?</h3>
           <p>You are looking at a <strong>receipt</strong>: the record of one decision. Somewhere, an AI
             agent asked to do one specific thing — the request described above — and a piece of safety
@@ -85,7 +97,7 @@
             switched off, kept to show the difference.)</p>
         </div>
 
-        <div class="rv-limit">
+        <div class="rv-limit" data-decision-only>
           <h3>What a passing check shows — and what it does not</h3>
           <p>A passing check shows that the receipt <strong>has not changed since it was signed</strong>
             and that it is internally true: feed the very same request to the very same decision
@@ -113,8 +125,8 @@
             <summary>the receipt (raw JSON)</summary>
             <pre id="rv-json" class="receipt"></pre>
           </details>
-          <p class="muted">Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
-          <p class="muted">Scope: seal-check verifies the <em>decision</em> over its committed inputs (kernel binary hash, request fingerprint, re-derived verdict, emitted bytes). It does <em>not</em> check that granted capabilities correspond to a policy-authorized target — this box accepts arbitrary target commitments (fire-your-own-target), so grants are carried as opaque commitments by design.</p>
+          <p class="muted" data-decision-only>Re-checked entirely in your browser. Nothing here was trusted on the receipt's word: the kernel binary is self-verified, the request is re-hashed, and the verdict is re-run through the same kernel. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
+          <p class="muted" data-decision-only>Scope: seal-check verifies the <em>decision</em> over its committed inputs (kernel binary hash, request fingerprint, re-derived verdict, emitted bytes). It does <em>not</em> check that granted capabilities correspond to a policy-authorized target — this box accepts arbitrary target commitments (fire-your-own-target), so grants are carried as opaque commitments by design.</p>
         </details>
       </div>
     </section>
@@ -125,9 +137,9 @@
     <section id="claims">
       <h2>What this proves, and what it does not</h2>
       <div class="claim-grid">
-        <div class="claim proves">
+        <div class="claim proves" data-decision-only>
           <h3>✓ What this proves</h3>
-          <p>For the receipt you supplied, this page re-checks the receipt's committed request fingerprint,
+          <p data-decision-only>For the receipt you supplied, this page re-checks the receipt's committed request fingerprint,
             signature, recorded kernel identity, and replayed decision against the verified seal mediation
             kernel running in your browser. When those checks pass, the receipt is internally consistent for
             the committed inputs it carries: the same request fingerprint and same verified kernel reproduce
@@ -135,6 +147,7 @@
             proofs that assert the stated mediation properties, <em>modulo their stated assumptions and the
             axioms {propext,&nbsp;Classical.choice,&nbsp;Quot.sound}</em>. Cross-origin content and connections are blocked. The policy declares WebRTC blocked. Chromium does not enforce this directive and may send WebRTC traffic. Important exception: top-level navigation remains possible — <code>window.open</code>, links, and meta refresh can send data in a URL to another site.</p>
         </div>
+        <p id="signed-family-claims" class="claim" hidden></p>
         <div class="claim notproves">
           <h3>✗ What this does NOT prove</h3>
           <p data-claims-not-proves></p>

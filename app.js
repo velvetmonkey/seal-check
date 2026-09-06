@@ -9,6 +9,8 @@ import { classifyReceiptFragment } from "./fragment-classifier.js";
 import { renderPageClaims } from "./page-claims.js";
 import { pastedReceiptDocumentOrError } from "./receipt-input.js";
 import { clearReceiptSummary, renderReceiptSummary } from "./receipt-summary.js";
+import { checkSpineReceipt } from "./spine-receipt.js";
+import { verify as verifyProtectReceipt, format as formatProtectResult } from "./protect-receipt.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -223,6 +225,8 @@ function showReceiptError(msg, focus = true, { isExample = false } = {}) {
 // state. It cannot survive a visitor result merely because an example painted
 // it earlier.
 function paintReceiptState(isExample) {
+  $("signed-family-claims").hidden = true;
+  for (const node of document.querySelectorAll("[data-decision-only]")) node.hidden = false;
   clearReceiptSummary($("receipt-summary"));
   $("rv-example-label")?.remove();
   // Result content belongs to the state that created it. Clearing every
@@ -530,19 +534,80 @@ function renderClassifiedReceiptDocument(document_, { isExample = false, isCurre
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
   const classified = classifyReceiptDocument(document_);
+  const protect = classified.family === "decision" && classified.record.seal_receipt === "v2" &&
+    ("kernel_inputs" in classified.record || "replay" in classified.record);
+  $("signer-controls").hidden = classified.family !== "spine" && !protect;
   if (classified.family === "malformed")
     return showReceiptError("receipt document refused: " + classified.errors.join("; "), true, { isExample });
-  if (classified.family === "decision") return renderVerifiedReceipt(document_, { isExample, isCurrent, scroll });
-  if (classified.family === "spine") return showReceiptError(
-    "This is a seal.spine/v1 proxy receipt, not the kernel decision-receipt format this page checks. " +
-    "It is refused here rather than being treated as a decision receipt. Use the shipped Spine checker with the signer public key obtained out of band: " +
-    "node checker/seal-receipt-check.mjs RECEIPT.json --pubkey OUT_OF_BAND_PUBKEY.", true, { isExample },
-  );
+  if (classified.family === "spine")
+    return renderSignedFamilyReceipt(document_, classified.record, "spine", { isExample, isCurrent, scroll });
+  if (classified.family === "decision") {
+    // Both products shipped seal_receipt:v2. Presence of either Protect-only
+    // member selects its strict, ordered whole-body format (including on a
+    // malformed Protect receipt). Extra host fields then fail its allowlist;
+    // missing Protect markers fall back to the unchanged host validator.
+    const r = classified.record;
+    if (protect)
+      return renderSignedFamilyReceipt(document_, r, "protect", { isExample, isCurrent, scroll });
+    return renderVerifiedReceipt(document_, { isExample, isCurrent, scroll });
+  }
   if (classified.family === "ambiguous")
     return showReceiptError("receipt refused: it claims both a kernel decision-receipt format and the distinct seal.spine/v1 proxy format. A record must have exactly one receipt kind.", true, { isExample });
   if (classified.family === "unknown_format")
-    return showReceiptError(`receipt refused: unsupported receipt discriminator ${JSON.stringify(classified.format)}. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.`, true, { isExample });
-  return showReceiptError("receipt refused: no recognized receipt discriminator. This page verifies kernel decision receipts; seal.spine/v1 proxy receipts use the separate Spine checker.", true, { isExample });
+    return showReceiptError(`receipt refused: unsupported receipt discriminator ${JSON.stringify(classified.format)}. This page checks kernel decision, Protect v2 and seal.spine/v1 receipts.`, true, { isExample });
+  return showReceiptError("receipt refused: no recognized receipt discriminator. This page checks kernel decision, Protect v2 and seal.spine/v1 receipts.", true, { isExample });
+}
+
+// Whole-receipt signatures use a visitor-supplied key, never one extracted
+// from the receipt or URL. A valid signature remains caller-supplied/unpinned.
+async function renderSignedFamilyReceipt(text, receipt, family, { isExample, isCurrent, scroll }) {
+  paintReceiptState(isExample);
+  focusReceiptMode();
+  $("signer-controls").hidden = false;
+  const publicKey = $("signer-key").value.trim();
+  let accepted = false, headline, detail, checks = [];
+  try {
+    if (family === "spine") {
+      const result = await checkSpineReceipt(receipt, publicKey);
+      accepted = result.accepted;
+      headline = accepted ? "Spine receipt signature and bindings valid" : "Spine receipt refused";
+      detail = accepted
+        ? "Decision, tool, arguments, effect and signature checks passed. The recorded decision was not replayed."
+        : `${result.code}: ${result.reason}`;
+      checks = accepted ? result.checks : [];
+    } else {
+      const result = await verifyProtectReceipt(text, { publicKeyHex: publicKey });
+      accepted = result.validate && result.signature && result.replay;
+      headline = accepted ? "Protect receipt signature valid — local verdict reproduced" : "Protect receipt signature unverified";
+      detail = accepted ? "The signed receipt and its argument/config bindings check out; the verifier-local kernel reproduces its verdict."
+        : "Supply the signer's 32-byte public key to check the receipt signature.";
+      checks = formatProtectResult(result).split("\n");
+    }
+  } catch (error) {
+    headline = family === "spine" ? "Spine receipt refused" : "Protect receipt refused";
+    detail = `${error.code || "verification_error"}: ${error.message}`;
+  }
+  if (!isCurrent()) return;
+  for (const node of document.querySelectorAll("[data-decision-only]")) node.hidden = true;
+  $("rv-result").classList.remove("hidden");
+  $("rv-table").classList.add("hidden");
+  $("rv-tech").open = true;
+  const scope = "Signing key: caller-supplied / UNPINNED. Operator authority and event occurrence are NOT ESTABLISHED. " +
+    (family === "protect" ? "The receipt carries no producer kernel identity; replay uses this page's verified kernel." : "Spine checks commitments and signature, not kernel replay.");
+  $("signed-family-claims").hidden = false;
+  $("signed-family-claims").textContent = "For this receipt family: " +
+    (family === "protect" ? "a passing check establishes signature validity, argument/config bindings and verifier-local verdict reproduction. "
+      : "a passing check establishes signature validity and decision/tool/arguments/effect bindings; it does not reproduce a kernel decision. ") + scope;
+  paintBanner(accepted ? "warn" : "bad", headline, detail + " " + scope);
+  $("rv-context").textContent = `Recorded claim: ${receipt.tool || "unknown tool"}.`;
+  $("rv-verdict").textContent = `${receipt.action || receipt.decision || receipt.verdict || "unknown"} (recorded)`;
+  $("rv-verdict").className = "verdict";
+  $("receipt-summary").textContent = `${family === "protect" ? "Protect v2" : "Spine v1"} receipt. ${scope}`;
+  for (const check of checks) $("rv-checks").append(rvLine(null, check));
+  $("rv-summary").textContent = accepted ? "Receipt checks passed within the scope above; VERIFY remains UNVERIFIED." : detail;
+  $("rv-summary").className = accepted ? "reason" : "reason bad";
+  $("rv-json").textContent = text;
+  if (scroll) $("receipt-verify").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // --- pasted receipt ----------------------------------------------------------
@@ -593,6 +658,23 @@ function init() {
   // Wire the receipt checker.
   if ($("paste-input")) {
     $("paste-input").addEventListener("input", onPasteInput);
+    $("signer-key").addEventListener("input", onPasteInput);
+    for (const [fileId, textId] of [["receipt-file", "paste-input"], ["signer-file", "signer-key"]]) {
+      $(fileId).addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const version = ++locationRenderVersion;
+        clearTimeout(pasteTimer);
+        try {
+          const text = await file.text();
+          if (version !== locationRenderVersion) return;
+          $(textId).value = text.trim();
+          await checkPasted(version);
+        } catch (error) {
+          if (version === locationRenderVersion) showReceiptError("File could not be read: " + error.message);
+        }
+      });
+    }
     window.addEventListener("hashchange", renderLocationReceiptOrExample);
   }
 
