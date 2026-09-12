@@ -44,20 +44,13 @@ function comparableVerdict(value) {
   return normalized === "DENY" ? "BLOCK" : normalized;
 }
 
-function contradictionText(receipt, certs, allowingCerts, denyingCerts) {
+function contradictionText(receipt, certs, denyingCerts) {
   const contradictions = [];
   const headline = comparableVerdict(receipt.verdict);
-  const determinateCerts = certs ? certs.filter((cert) => {
-    const decision = cert && comparableVerdict(cert.verdict);
-    return decision === "ALLOW" || decision === "BLOCK";
-  }) : [];
-  const disagreeingCerts = determinateCerts.filter((cert) => comparableVerdict(cert.verdict) !== headline);
-
-  // The top-level decision is a claim about the same decision recorded by the
-  // per-gate certs.  A split is useful context, but it is not orderly when a
-  // determinate cert says the opposite of that top-level claim.
-  if ((headline === "ALLOW" || headline === "BLOCK") && disagreeingCerts.length) {
-    contradictions.push(`CONFLICT: verdict says ${headline} but per-gate results include ${disagreeingCerts.map(certDecision).join("; ")}.`);
+  // Gate decisions form a conjunction: any denying gate makes the result
+  // BLOCK, even when other gates allow. ALLOW requires no denying gates.
+  if (headline === "ALLOW" && denyingCerts.length) {
+    contradictions.push(`CONFLICT: verdict says ${headline} but per-gate results include ${denyingCerts.map(certDecision).join("; ")}.`);
   }
   if (headline === "BLOCK" && certs && certs.length && denyingCerts.length === 0) {
     contradictions.push("CONFLICT: verdict says BLOCK but no per-gate result records a denying gate.");
@@ -89,7 +82,7 @@ export function receiptSummaryEntries(receipt) {
   const allowingCerts = certs ? certs.filter((c) => c && comparableVerdict(c.verdict) === "ALLOW") : [];
   const denyingCerts = certs ? certs.filter((c) => c && comparableVerdict(c.verdict) === "BLOCK") : [];
   const split = comparableVerdict(r.verdict) === "BLOCK" && allowingCerts.length && denyingCerts.length;
-  const contradiction = contradictionText(r, certs, allowingCerts, denyingCerts);
+  const contradiction = contradictionText(r, certs, denyingCerts);
   const decision = `The receipt states ${headline}; deny_kernel is ${denyKernel}. Per-gate results: ${certText}.` +
     (split
       ? ` This is a split decision: ${denyingCerts.map(certKernel).join(" and ")} denied it while ${allowingCerts.map(certKernel).join(" and ")} allowed it; the BLOCK headline comes from ${denyKernel}.`

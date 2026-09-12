@@ -51,6 +51,44 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
     K.buildReceipt({ call, config: cfg.CFG_STANDARD, parsed: res.parsed, raw: res.raw, sha, signedConfig: res.signedConfig })));
   const clone = () => JSON.parse(JSON.stringify(genuine));
 
+  // Mint a v3 BLOCK in-process: retain the shipped producer's request/config
+  // bindings and compute the Object B envelope with the product preimage.
+  const F = await import(path.join(ROOT, "receipt-format.js"));
+  const nacl = (await import(path.join(ROOT, "vendor/nacl.js"))).default;
+  const blockCall = { ...call, approvals: [] };
+  const blockResult = await K.decideRaw(cfg.CFG_STANDARD, blockCall);
+  const signedReceipt = JSON.parse(K.canonicalReceiptJson(K.buildReceipt({
+    call: blockCall, config: cfg.CFG_STANDARD, parsed: blockResult.parsed,
+    raw: blockResult.raw, sha, signedConfig: blockResult.signedConfig,
+  })));
+  check("v3 signing control starts with a genuine BLOCK", signedReceipt.verdict === "BLOCK");
+  delete signedReceipt.seal_receipt;
+  Object.assign(signedReceipt, {
+    record_type: "seal.authorization-decision", record_version: 3, release_status: "NOT_APPLICABLE",
+    operation_id: "ab".repeat(32), durability_class: "asserted_local_fsync",
+  });
+  const signer = nacl.sign.keyPair.fromSeed(new Uint8Array(32).fill(42));
+  const signature = nacl.sign.detached(F.receiptSignaturePreimage(signedReceipt), signer.secretKey);
+  signedReceipt.signature = {
+    domain: "seal.object-b/v1", algorithm: "Ed25519",
+    public_key: Buffer.from(signer.publicKey).toString("hex"), key_id: F.sha256Hex(signer.publicKey),
+    encoding: "base64url-nopad", value: Buffer.from(signature).toString("base64url"),
+  };
+  const signedResult = await R.verifyReceipt(JSON.stringify(signedReceipt), { expectedConfigPubkey: cfg.PUBKEY });
+  check("public v3 path: untampered receipt verifies",
+    signedResult.formatOk && signedResult.allGood && signedResult.outcome === "authorised",
+    (signedResult.formatErrors || []).join("; ") || signedResult.outcome);
+  signature[0] ^= 1;
+  signedReceipt.signature.value = Buffer.from(signature).toString("base64url");
+  const tamperedResult = await R.verifyReceipt(JSON.stringify(signedReceipt), { expectedConfigPubkey: cfg.PUBKEY });
+  check("public v3 path: one tampered signature byte is rejected before replay",
+    tamperedResult.formatOk === false && tamperedResult.allGood === false &&
+    tamperedResult.outcome === "failure" && tamperedResult.kernelSha === undefined);
+  check("public v3 path: tampered signature fails cryptographic verification",
+    tamperedResult.formatErrors.some((error) => error.includes("Ed25519 verification failed")),
+    tamperedResult.formatErrors.join("; "));
+
+
   // Baseline: the genuine receipt verifies.
   const unpinned = await R.verifyReceipt(clone());
   check("genuine receipt: signature valid", unpinned.signature_valid === true, unpinned.rederiveError || "");
