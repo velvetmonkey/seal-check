@@ -137,3 +137,40 @@ test("CSP blocks cross-origin requests, declares WebRTC blocking, and observes e
   assert.equal(await page.locator("#rv-verdict").textContent(), "REFUSED");
   console.log("Still works: example ALLOWED, wasm verified, tampered receipt REFUSED.");
 });
+
+test("paste and both file inputs preserve embedded-link receipts through checkPasted", async (t) => {
+  const playwright = require("playwright");
+  const { server, url } = await startStaticServer();
+  t.after(() => server.close());
+  const browser = await playwright.chromium.launch({ headless: true, executablePath: process.env.CHROME_FOR_TESTING || undefined });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  page.setDefaultTimeout(10000);
+  await page.goto(url);
+  await page.waitForFunction(() => document.getElementById("rv-verdict").textContent === "ALLOWED");
+  const receipt = JSON.parse(await readFile(new URL("fixtures/host-v2-block.receipt.json", import.meta.url), "utf8"));
+  receipt.arguments.url = "https://example.invalid/#receipt=eyJmb28iOiJiYXIifQ";
+  const raw = JSON.stringify(receipt);
+  for (const route of ["paste-input", "signer-key", "receipt-file", "signer-file"]) {
+    await page.evaluate((raw) => {
+      document.getElementById("paste-input").value = raw;
+      document.getElementById("rv-summary").textContent = "";
+    }, raw);
+    if (route.endsWith("file")) {
+      await page.locator(`#${route}`).setInputFiles({ name: "input.json", mimeType: "application/json", buffer: Buffer.from(route === "receipt-file" ? raw : "0".repeat(64)) });
+    } else {
+      await page.locator(`#${route}`).dispatchEvent("input");
+    }
+    await page.waitForFunction(() => document.getElementById("rv-summary").textContent !== "");
+    assert.match(await page.locator("#rv-summary").textContent(), /canonical_request/, route);
+    assert.match(await page.locator("#rv-summary").textContent(), /schema validation/, route);
+    console.log(`PASS caller ${route}: original receipt reaches binding refusal`);
+  }
+  const valid = await readFile(new URL("../examples/allow.receipt.json", import.meta.url), "utf8");
+  for (const input of [valid, `https://example.invalid/#receipt=${Buffer.from(valid).toString("base64url")}`, Buffer.from(valid).toString("base64url")]) {
+    await page.locator("#paste-input").fill(input);
+    await page.waitForFunction(() => document.getElementById("rv-verdict").textContent === "ALLOWED");
+  }
+  await page.locator("#paste-input").fill("#receipt=a");
+  await page.waitForFunction(() => document.getElementById("rv-summary").textContent.includes("could not decode"));
+});
