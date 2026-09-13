@@ -44,7 +44,7 @@ function joinedText(receipt) {
   return receiptSummaryEntries(receipt).map((entry) => entry.text).join("\n");
 }
 
-test("mixed allow/deny certs aggregate to BLOCK without a conflict", () => {
+test("defect 1: split decision is explained without a conflict", () => {
   const text = joinedText({
     tool: "db.execute",
     arguments: { database: "prod", sql: "drop table users" },
@@ -76,6 +76,7 @@ test("contradiction rule catches a BLOCK headline whose named denying kernel all
     deny_kernel: "safety",
     certs: [{ kernel: "safety", verdict: "allow" }, { kernel: "temporal", verdict: "deny" }],
   });
+  assert.doesNotMatch(text, /CONFLICT: verdict says BLOCK but per-gate results include/);
   assert.doesNotMatch(text, /CONFLICT: verdict says BLOCK/);
   assert.match(text, /CONFLICT: deny_kernel says safety but the denying per-gate results are temporal\./);
 });
@@ -123,6 +124,10 @@ test("defect 2: clearReceiptSummary removes stale summary lines before a refusal
 
   clearReceiptSummary(container);
   assert.equal(container.children.length, 0);
+});
+
+test("BLOCK with only allowing gates remains a conflict", () => {
+  assert.match(joinedText({ verdict: "BLOCK", certs: [{ kernel: "safety", verdict: "allow" }] }), /CONFLICT: verdict says BLOCK/);
 });
 
 test("BLOCK conflicts with an all-allow conjunction", () => {
