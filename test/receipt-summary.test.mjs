@@ -77,6 +77,7 @@ test("contradiction rule catches a BLOCK headline whose named denying kernel all
     certs: [{ kernel: "safety", verdict: "allow" }, { kernel: "temporal", verdict: "deny" }],
   });
   assert.doesNotMatch(text, /CONFLICT: verdict says BLOCK but per-gate results include/);
+  assert.doesNotMatch(text, /CONFLICT: verdict says BLOCK/);
   assert.match(text, /CONFLICT: deny_kernel says safety but the denying per-gate results are temporal\./);
 });
 
@@ -127,4 +128,10 @@ test("defect 2: clearReceiptSummary removes stale summary lines before a refusal
 
 test("BLOCK with only allowing gates remains a conflict", () => {
   assert.match(joinedText({ verdict: "BLOCK", certs: [{ kernel: "safety", verdict: "allow" }] }), /CONFLICT: verdict says BLOCK/);
+});
+
+test("BLOCK conflicts with an all-allow conjunction", () => {
+  const text = joinedText({ verdict: "BLOCK", deny_kernel: null,
+    certs: [{ kernel: "safety", verdict: "allow" }, { kernel: "temporal", verdict: "ALLOW" }] });
+  assert.match(text, /CONFLICT: verdict says BLOCK but no per-gate result records a denying gate\./);
 });

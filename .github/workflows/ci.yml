@@ -27,4 +27,8 @@ jobs:
       - run: node --test test/page-claims-source.test.mjs
       - run: node --test test/page-merge.test.mjs
       - run: node --test test/page-module-imports.test.mjs
+      - run: node --test test/fragment-classifier.test.mjs
+      - run: node --test test/receipt-input.test.mjs
+      - run: node --test test/receipt-summary.test.mjs
+      - run: node test/spine-receipt.test.cjs
       - run: node scripts/contrast.mjs

@@ -44,3 +44,18 @@ test("only whole links and fragments decode; surrounding prose and trailing junk
   }
   assert.equal(pastedReceiptDocumentOrError("#receipt=a").ok, false);
 });
+
+test("receipt link adjacent to JSON punctuation preserves the outer document", () => {
+  const link = "https://example.invalid/#receipt=eyJmb28iOiJiYXIifQ";
+  for (const document of [JSON.stringify({ link, verdict: "BLOCK" }), JSON.stringify([link, {}]), JSON.stringify(link)]) {
+    assert.deepEqual(pastedReceiptDocumentOrError(document), { ok: true, document });
+  }
+});
+
+test("only a whole receipt URL or fragment is decoded", () => {
+  const fragment = "#receipt=eyJmb28iOiJiYXIifQ";
+  assert.deepEqual(pastedReceiptDocumentOrError(fragment), { ok: true, document: '{"foo":"bar"}' });
+  for (const document of [`prefix ${fragment}`, `https://example.invalid/${fragment}&extra=1`]) {
+    assert.deepEqual(pastedReceiptDocumentOrError(document), { ok: true, document });
+  }
+});
