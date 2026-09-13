@@ -44,7 +44,7 @@ function joinedText(receipt) {
   return receiptSummaryEntries(receipt).map((entry) => entry.text).join("\n");
 }
 
-test("defect 1: split decision with a contrary cert is marked as a conflict", () => {
+test("defect 1: split decision is explained without a conflict", () => {
   const text = joinedText({
     tool: "db.execute",
     arguments: { database: "prod", sql: "drop table users" },
@@ -58,7 +58,7 @@ test("defect 1: split decision with a contrary cert is marked as a conflict", ()
     kernel_identity: { wasm_sha256: "c".repeat(64) },
   });
   assert.match(text, /This is a split decision: safety denied it while temporal allowed it; the BLOCK headline comes from safety\./);
-  assert.match(text, /CONFLICT: verdict says BLOCK but per-gate results include temporal \(allow\)\./);
+  assert.doesNotMatch(text, /CONFLICT/);
 });
 
 test("defect 1: summary marks a top-level verdict contradiction instead of smoothing it", () => {
@@ -76,7 +76,7 @@ test("contradiction rule catches a BLOCK headline whose named denying kernel all
     deny_kernel: "safety",
     certs: [{ kernel: "safety", verdict: "allow" }, { kernel: "temporal", verdict: "deny" }],
   });
-  assert.match(text, /CONFLICT: verdict says BLOCK but per-gate results include safety \(allow\)\./);
+  assert.doesNotMatch(text, /CONFLICT: verdict says BLOCK but per-gate results include/);
   assert.match(text, /CONFLICT: deny_kernel says safety but the denying per-gate results are temporal\./);
 });
 
@@ -123,4 +123,8 @@ test("defect 2: clearReceiptSummary removes stale summary lines before a refusal
 
   clearReceiptSummary(container);
   assert.equal(container.children.length, 0);
+});
+
+test("BLOCK with only allowing gates remains a conflict", () => {
+  assert.match(joinedText({ verdict: "BLOCK", certs: [{ kernel: "safety", verdict: "allow" }] }), /CONFLICT: verdict says BLOCK/);
 });

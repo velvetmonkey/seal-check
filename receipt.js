@@ -173,7 +173,7 @@ export async function verifyReceipt(input, { expectedConfigPubkey, cryptoOptions
   //    table, hard-split rule, stored-line-vs-derived-line equality. A
   //    malformed receipt never reaches the kernel.
   const fromDocument = typeof input === "string";
-  const shape = validateReceipt(input);
+  const shape = validateReceipt(input, { ed25519Verify: nacl.sign.detached.verify });
   const receipt = fromDocument ? (shape.record ?? null) : input;
 
   const out = {

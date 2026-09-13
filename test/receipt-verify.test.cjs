@@ -39,6 +39,15 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   const K = await import(path.join(ROOT, "kernel.js"));
   const R = await import(path.join(ROOT, "receipt.js"));
 
+  const v3Document = fs.readFileSync(path.join(__dirname, "fixtures/host-v3-block.receipt.json"), "utf8");
+  const v3 = await R.verifyReceipt(v3Document);
+  check("v3 entry point: signed document passes format validation", v3.formatOk === true, (v3.formatErrors || []).join("; "));
+  check("v3 entry point: reaches cryptographic checks", v3.signature_valid === true);
+  const badV3 = JSON.parse(v3Document);
+  badV3.signature.value = (badV3.signature.value[0] === "A" ? "B" : "A") + badV3.signature.value.slice(1);
+  const invalidV3 = await R.verifyReceipt(JSON.stringify(badV3));
+  check("v3 entry point: invalid Object B signature fails", invalidV3.formatOk === false && invalidV3.outcome === "failure" && invalidV3.formatErrors.some(e => e.includes("Ed25519 verification failed")));
+
   // Produce a genuine receipt through the SHIPPED pipeline.
   const call = {
     tool: "store.update", args: { op: "orset.add", key: "k1" },
@@ -198,6 +207,8 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   const rBy = await R.verifyReceipt(bypass);
   check("bypass receipt: shape valid", rBy.formatOk === true, (rBy.formatErrors || []).join("; "));
   check("bypass receipt: mediated false", rBy.mediated === false);
+  const v1Doc = await R.verifyReceipt(JSON.stringify(bypass));
+  check("v1 document: unchanged bypass failure", v1Doc.formatOk === true && v1Doc.formatVersion === "v1" && v1Doc.document_checked === true && v1Doc.mediated === false && v1Doc.outcome === "failure");
   check("bypass receipt: allGood false", rBy.allGood === false);
 
   // callSummary: the demo shape keeps its phrasing; real receipts never "undefined".

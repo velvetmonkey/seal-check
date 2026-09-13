@@ -53,10 +53,10 @@ function contradictionText(receipt, certs, allowingCerts, denyingCerts) {
   }) : [];
   const disagreeingCerts = determinateCerts.filter((cert) => comparableVerdict(cert.verdict) !== headline);
 
-  // The top-level decision is a claim about the same decision recorded by the
-  // per-gate certs.  A split is useful context, but it is not orderly when a
-  // determinate cert says the opposite of that top-level claim.
-  if ((headline === "ALLOW" || headline === "BLOCK") && disagreeingCerts.length) {
+  // Any denying gate makes the combined decision BLOCK; otherwise the
+  // determinate gates allow. Mixed allow/deny results are ordinary BLOCKs.
+  const combined = denyingCerts.length ? "BLOCK" : determinateCerts.length ? "ALLOW" : null;
+  if ((headline === "ALLOW" || headline === "BLOCK") && combined !== null && headline !== combined) {
     contradictions.push(`CONFLICT: verdict says ${headline} but per-gate results include ${disagreeingCerts.map(certDecision).join("; ")}.`);
   }
   if (headline === "BLOCK" && certs && certs.length && denyingCerts.length === 0) {
