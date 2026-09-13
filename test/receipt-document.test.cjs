@@ -147,6 +147,73 @@ const text = (f) => fs.readFileSync(path.join(__dirname, "fixtures", f), "utf8")
   check("genuine v3 under an always-false oracle still REFUSES (document checks did not replace crypto)",
     JSON.stringify([r.ok, r.version, r.receipt_signature_valid]), JSON.stringify([false, "v3", false]));
 
+  // Whitespace belongs to the JSON grammar, never to string contents. Exercise
+  // both sides of all six structural characters on real signed v3 bytes.
+  // Track escapes so embedded JSON in signed_config.payload stays untouched.
+  const spaceOutsideStrings = (doc, token, side, space) => {
+    let quoted = false, escaped = false, out = "", hits = 0;
+    for (const c of doc) {
+      const structural = !quoted && c === token;
+      if (structural && side === "before") out += space;
+      out += c;
+      if (structural && side === "after") out += space;
+      if (structural) hits++;
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (c === "\\") escaped = true;
+        else if (c === '"') quoted = false;
+      } else if (c === '"') quoted = true;
+    }
+    if (!hits) throw new Error(`unexercised structural character: ${token}`);
+    return out;
+  };
+  const compactV3 = JSON.stringify(JSON.parse(v3text));
+  for (const token of ["{", "}", "[", "]", ":", ","]) {
+    for (const side of ["before", "after"]) {
+      for (const space of [" ", "\t", "\n", "\r", " \t\r\n"]) {
+        const doc = spaceOutsideStrings(compactV3, token, side, space);
+        const result = V(doc);
+        check(`whitespace ${side} ${token} ${JSON.stringify(space)} retains v3 signature`,
+          result.ok && result.receipt_signature_valid === true, true);
+      }
+    }
+  }
+  const fleet = JSON.parse(fleetText);
+  // These are VALUE contents, including a comma then a quoted-key-shaped
+  // substring, backslashes, structural punctuation, and escaped whitespace.
+  const trap = { ...fleet, reason: '\", "seal_receipt": "v3", "record_version": 3 { } [ ] : \\ \t\r\n' };
+  const trapCompact = JSON.stringify(trap);
+  const trapPretty = JSON.stringify(trap, null, 2);
+  check("whitespace string trap compact accepted", V(trapCompact).ok, true);
+  check("whitespace string trap pretty accepted", V(trapPretty).ok, true);
+  for (const key of ["reason", "seal_receipt"]) {
+    const compactDup = trapCompact.replace('{', `{${JSON.stringify(key)}:${JSON.stringify(trap[key])},`);
+    const prettyDup = trapPretty.replace('{', `{\n  ${JSON.stringify(key)}: ${JSON.stringify(trap[key])},`);
+    const expected = key === "seal_receipt"
+      ? 'document: version discriminator "seal_receipt" occurs 2 times at the top level of the received bytes — JSON.parse keeps only the last, so the document and the parsed record disagree about which schema (and which signature check) applies; refused as MALFORMED (fail closed, §12.6)'
+      : 'document: top-level member "reason" occurs 2 times in the received bytes — a duplicated member is ambiguous about what was signed and what any two readers will see; refused as MALFORMED (fail closed, §12.6)';
+    for (const [form, doc] of [["compact", compactDup], ["pretty", prettyDup]]) {
+      const result = V(doc);
+      check(`whitespace ${form} duplicate ${key} beside string trap refused with shipped message`,
+        !result.ok && result.errors.includes(expected), true);
+    }
+  }
+  for (const [name, doc] of [
+    ["trailing whitespace", compactV3 + " \t\r\n"],
+    ["trailing newline", compactV3 + "\n"],
+    ["CRLF", JSON.stringify(JSON.parse(v3text), null, 2).replace(/\n/g, "\r\n")],
+  ]) {
+    const result = V(doc);
+    check(`whitespace ${name} retains v3 signature`, result.ok && result.receipt_signature_valid, true);
+  }
+  check("whitespace pretty BOM remains refused", named(V("\ufeff" + trapPretty), "byte-order mark"), true);
+  const nestedDup = trapPretty.replace('"kernel_identity": {', '"kernel_identity": {\n "note": "a",\n "note": "b",');
+  check("whitespace nested duplicates remain outside top-level scan scope", V(nestedDup).ok, true);
+  for (const illegal of ["\v", "\f", "\u00a0", "\u2028", "\ufeff"]) {
+    check(`whitespace non-JSON separator ${JSON.stringify(illegal)} refused`,
+      V(trapCompact.replace(',', ',' + illegal)).ok, false);
+  }
+
   // ---- end to end: the shipped CLI verifier ---------------------------------
   // verify-file.cjs hands the FILE BYTES to verifyReceipt (§12.6). A file
   // carrying a duplicated discriminator must never exit 0.
