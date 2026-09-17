@@ -118,6 +118,10 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   // object path, since JSON.parse keeps only the last occurrence — is refused
   // before the kernel is ever consulted.
   const genuineDoc = K.canonicalReceiptJson(genuine);
+  const prettyDoc = await R.verifyReceipt(JSON.stringify(genuine, null, 2));
+  check("pretty genuine DOCUMENT: signature and replay remain valid",
+    prettyDoc.document_checked === true && prettyDoc.signature_valid === true &&
+    prettyDoc.kernel_replay_consistent === true && prettyDoc.outcome === "unpinned");
   const okDoc = await R.verifyReceipt(genuineDoc, { expectedConfigPubkey: cfg.PUBKEY });
   check("genuine receipt as a DOCUMENT: same authorised outcome",
     okDoc.outcome === "authorised" && okDoc.allGood === true, (okDoc.formatErrors || []).join("; "));
