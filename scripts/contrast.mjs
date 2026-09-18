@@ -118,6 +118,14 @@ const PAIRS = [
   ["warning", "bg", "ui", ".claim.notproves, .rv-banner.warn, .lab-asserted borders"],
   ["warning", "warning-soft", "ui", "the same borders against their own fill"],
 
+  // the shared tooltip trigger (.tip-btn): most sit on --seal-bg (inherited
+  // page background) but every row/column-header trigger inside the output
+  // pane's table panel sits on --seal-surface instead, so that surface pair
+  // is audited separately, per jwtms-redesign.
+  ["muted", "surface", "body", ".tip-btn icon glyph on --seal-surface (table panel)"],
+  ["muted", "surface", "ui", ".tip-btn border on --seal-surface (table panel)"],
+  ["accent", "surface", "ui", ".tip-btn hover/focus border on --seal-surface (table panel)"],
+
   // large text (>=24px): the re-check headline
   ["success", "success-soft", "large", ".rv-headline in the pass state (clamped 24-34px, 700)"],
   ["danger", "danger-soft", "large", ".rv-headline in the fail state"],
