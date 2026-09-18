@@ -236,8 +236,8 @@ function focusReceiptMode() {
   // Compact the header without hiding any of the page's claims or limits.
   document.body.classList.add("receipt-mode");
 }
-function showReceiptError(msg, focus = true, { isExample = false } = {}) {
-  paintReceiptState(isExample);
+function showReceiptError(msg, focus = true) {
+  paintReceiptState();
   if (focus) focusReceiptMode();
   $("rv-result").classList.remove("hidden");
   paintBanner("bad", "This receipt could not be read", msg);
@@ -246,14 +246,11 @@ function showReceiptError(msg, focus = true, { isExample = false } = {}) {
   $("rv-tech").open = true;
 }
 
-// The marker is painted by every receipt/error render from that render's own
-// state. It cannot survive a visitor result merely because an example painted
-// it earlier.
-function paintReceiptState(isExample) {
+// Clear the previous receipt presentation at every receipt/error boundary.
+function paintReceiptState() {
   $("signed-family-claims").hidden = true;
   for (const node of document.querySelectorAll("[data-decision-only]")) node.hidden = false;
   clearReceiptSummary($("receipt-summary"));
-  $("rv-example-label")?.remove();
   // Result content belongs to the state that created it. Clearing every
   // mutable field at the boundary means an error can never retain an earlier
   // example's rows, raw JSON, checks, or narrative while merely hiding part of
@@ -271,18 +268,11 @@ function paintReceiptState(isExample) {
   for (const id of ["rv-decision-note", "rv-verdict", "rv-deny", "rv-checks", "rv-json", "rv-summary", "rv-outcome-tag", "rv-subline-text"])
     $(id).replaceChildren();
   $("rv-subline-tip").textContent = "";
-  if (isExample) {
-    const label = el("p", "example-label");
-    label.id = "rv-example-label";
-    label.append(el("strong", null, "EXAMPLE RECEIPT"),
-      " — bundled sample, not yours. Paste your own to replace it.");
-    $("input-pane").prepend(label);
-  }
 }
 
 // Back to the bare page: box empty, nothing result-shaped on screen.
 function hideReceiptResult() {
-  paintReceiptState(false);
+  paintReceiptState();
   $("rv-banner").className = "rv-banner hidden";
   $("rv-result").classList.add("hidden");
 }
@@ -310,8 +300,8 @@ function appendReceiptClaimNote(container) {
 
 // The control receipt: seal was switched OFF (bypass), so there is no kernel
 // decision to verify. Render it honestly, NOT as a passed verification.
-function renderControlReceipt(receipt, { isExample = false } = {}) {
-  paintReceiptState(isExample);
+function renderControlReceipt(receipt) {
+  paintReceiptState();
   renderReceiptSummary($("receipt-summary"), receipt);
   const ex0 = receipt.execution || {};
   const oldControlSubline = "This is the control receipt: the seal gate was switched OFF for this run, so nothing decided anything. " +
@@ -350,27 +340,27 @@ function renderControlReceipt(receipt, { isExample = false } = {}) {
 // arrived from a link, or a minted receipt object for the local demo. §12.6:
 // the text form is the one that can be checked against the bytes.
 async function renderVerifiedReceipt(input, {
-  focus = true, scroll = true, isExample = false, isCurrent = () => true,
+  focus = true, scroll = true, isCurrent = () => true,
 } = {}) {
-  paintReceiptState(isExample);
+  paintReceiptState();
   if (focus) focusReceiptMode();
   $("rv-tech").open = false; // re-opened below for states that demand a close look
   let r;
   try { r = await verifyReceipt(input); } catch (e) {
-    if (isCurrent()) return showReceiptError("verification error: " + e.message, focus, { isExample });
+    if (isCurrent()) return showReceiptError("verification error: " + e.message, focus);
     return;
   }
   if (!isCurrent()) return;
   const receipt = r.receipt;
   if (!receipt) {
     return showReceiptError("receipt failed schema validation: " +
-      (r.formatErrors || []).join("; "), focus, { isExample });
+      (r.formatErrors || []).join("; "), focus);
   }
 
-  if (receipt.bypass) return renderControlReceipt(receipt, { isExample });
+  if (receipt.bypass) return renderControlReceipt(receipt);
   if (r.formatOk === false) {
     return showReceiptError("receipt failed schema validation (" + (r.formatVersion || "unrecognized") + "): " +
-      (r.formatErrors || []).join("; "), focus, { isExample });
+      (r.formatErrors || []).join("; "), focus);
   }
   renderReceiptSummary($("receipt-summary"), receipt);
   $("rv-result").classList.remove("hidden");
@@ -509,17 +499,15 @@ async function renderBundledExampleReceipt(isCurrent = () => true, { scroll = tr
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     document = await response.text();
   } catch (e) {
-    if (isCurrent()) return showReceiptError("example receipt could not be loaded: " + e.message, true, { isExample: true });
+    if (isCurrent()) return showReceiptError("example receipt could not be loaded: " + e.message, true);
     return;
   }
   if (!isCurrent()) return;
-  bundledExampleDocument = document.trim();
   $("paste-input").value = document;
-  return renderClassifiedReceiptDocument(document, { isExample: true, isCurrent, scroll });
+  return renderClassifiedReceiptDocument(document, { isCurrent, scroll });
 }
 
 let locationRenderVersion = 0;
-let bundledExampleDocument = null;
 
 // Fragments that name a section of this page are navigation, not receipts.
 const NAV_ANCHOR_IDS = ["receipt-verify", "claims"];
@@ -540,15 +528,15 @@ async function renderLocationReceiptOrExample() {
   // bare-page state (the bundled example) without stealing the scroll.
   const nav = navAnchorTarget(location.hash);
   if (nav) {
-    paintReceiptState(false);
+    paintReceiptState();
     if (nav.tagName === "DETAILS") nav.open = true;
     return renderBundledExampleReceipt(isCurrent, { scroll: false });
   }
 
   const state = classifyReceiptFragment(location.hash);
 
-  // Remove prior example-owned DOM synchronously, before any async work.
-  paintReceiptState(false);
+  // Clear the prior receipt presentation synchronously, before any async work.
+  paintReceiptState();
   if (state.kind === "absent") return renderBundledExampleReceipt(isCurrent);
   $("paste-input").value = state.document ?? "";
   if (state.kind === "empty" || state.kind === "whitespace-only" || state.kind === "unparseable")
@@ -563,7 +551,7 @@ async function renderLocationReceiptOrExample() {
 // Route every received document the same way, regardless of whether it arrived
 // in a deep link or through the paste box.  A Spine receipt must never fall
 // through to the decision-receipt verifier merely because its transport changed.
-function renderClassifiedReceiptDocument(document_, { isExample = false, isCurrent = () => true, scroll = true } = {}) {
+function renderClassifiedReceiptDocument(document_, { isCurrent = () => true, scroll = true } = {}) {
   if (!isCurrent()) return;
   // The raw text, not a parsed object: the link's own bytes decide both its
   // family and whether a duplicate/escaped discriminator hid that family.
@@ -572,9 +560,9 @@ function renderClassifiedReceiptDocument(document_, { isExample = false, isCurre
     ("kernel_inputs" in classified.record || "replay" in classified.record);
   $("signer-controls").hidden = classified.family !== "spine" && !protect;
   if (classified.family === "malformed")
-    return showReceiptError("receipt document refused: " + classified.errors.join("; "), true, { isExample });
+    return showReceiptError("receipt document refused: " + classified.errors.join("; "), true);
   if (classified.family === "spine")
-    return renderSignedFamilyReceipt(document_, classified.record, "spine", { isExample, isCurrent, scroll });
+    return renderSignedFamilyReceipt(document_, classified.record, "spine", { isCurrent, scroll });
   if (classified.family === "decision") {
     // Both products shipped seal_receipt:v2. Presence of either Protect-only
     // member selects its strict, ordered whole-body format (including on a
@@ -582,20 +570,20 @@ function renderClassifiedReceiptDocument(document_, { isExample = false, isCurre
     // missing Protect markers fall back to the unchanged host validator.
     const r = classified.record;
     if (protect)
-      return renderSignedFamilyReceipt(document_, r, "protect", { isExample, isCurrent, scroll });
-    return renderVerifiedReceipt(document_, { isExample, isCurrent, scroll });
+      return renderSignedFamilyReceipt(document_, r, "protect", { isCurrent, scroll });
+    return renderVerifiedReceipt(document_, { isCurrent, scroll });
   }
   if (classified.family === "ambiguous")
-    return showReceiptError("receipt refused: it claims both a kernel decision-receipt format and the distinct seal.spine/v1 proxy format. A record must have exactly one receipt kind.", true, { isExample });
+    return showReceiptError("receipt refused: it claims both a kernel decision-receipt format and the distinct seal.spine/v1 proxy format. A record must have exactly one receipt kind.", true);
   if (classified.family === "unknown_format")
-    return showReceiptError(`receipt refused: unsupported receipt discriminator ${JSON.stringify(classified.format)}. This page checks kernel decision, Protect v2 and seal.spine/v1 receipts.`, true, { isExample });
-  return showReceiptError("receipt refused: no recognized receipt discriminator. This page checks kernel decision, Protect v2 and seal.spine/v1 receipts.", true, { isExample });
+    return showReceiptError(`receipt refused: unsupported receipt discriminator ${JSON.stringify(classified.format)}. This page checks kernel decision, Protect v2 and seal.spine/v1 receipts.`, true);
+  return showReceiptError("receipt refused: no recognized receipt discriminator. This page checks kernel decision, Protect v2 and seal.spine/v1 receipts.", true);
 }
 
 // Whole-receipt signatures use a visitor-supplied key, never one extracted
 // from the receipt or URL. A valid signature remains caller-supplied/unpinned.
-async function renderSignedFamilyReceipt(text, receipt, family, { isExample, isCurrent, scroll }) {
-  paintReceiptState(isExample);
+async function renderSignedFamilyReceipt(text, receipt, family, { isCurrent, scroll }) {
+  paintReceiptState();
   focusReceiptMode();
   $("signer-controls").hidden = false;
   const publicKey = $("signer-key").value.trim();
@@ -673,7 +661,7 @@ function onPasteInput() {
   // not only after the debounce. This closes the window in which an old fetch
   // could overwrite newer pasted content.
   const version = ++locationRenderVersion;
-  paintReceiptState(false);
+  paintReceiptState();
   clearTimeout(pasteTimer);
   pasteTimer = setTimeout(() => checkPasted(version), 300);
 }
@@ -681,7 +669,7 @@ function onPasteInput() {
 async function checkPasted(version = ++locationRenderVersion) {
   const isCurrent = () => version === locationRenderVersion;
   if (!isCurrent()) return;
-  paintReceiptState(false);
+  paintReceiptState();
   $("paste-error").textContent = "";
   const decoded = pastedReceiptDocumentOrError($("paste-input").value);
   if (!decoded.ok) return showReceiptError(decoded.error);
@@ -689,9 +677,8 @@ async function checkPasted(version = ++locationRenderVersion) {
     if (isCurrent()) $("paste-error").textContent = "kernel not verified — refusing to check receipts.";
     return;
   }
-  const isExample = bundledExampleDocument !== null && decoded.document === bundledExampleDocument;
-  paintReceiptState(isExample);
-  await renderClassifiedReceiptDocument(decoded.document, { isExample, isCurrent });
+  paintReceiptState();
+  await renderClassifiedReceiptDocument(decoded.document, { isCurrent });
 }
 
 // One <tr> for a plain [label, value] fact the signed-family (Spine/Protect)
