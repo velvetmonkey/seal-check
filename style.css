@@ -300,6 +300,35 @@ footer h3 { margin-bottom: 6px; }
 /* a failed row is tinted AND rule-marked, so the failure survives grayscale */
 .rv-table tr.rvt-row-fail td, .rv-table tr.rvt-row-fail th { background: var(--seal-danger-soft); }
 .rv-table tr.rvt-row-fail th { box-shadow: inset 3px 0 0 var(--seal-danger); }
+
+/* Below ~560px the fixed 11em/9em/2em columns leave Value a few characters
+   wide, wrapping hashes and JSON one syllable per line. Below that width the
+   table becomes one card per row instead: Field (already a <th scope="row">)
+   as the card's heading, then Value and Re-check each on their own full-width
+   line, so long hashes read as continuous wrapped text, not fragments. No
+   content changes — every field, tooltip and detail is still here, just
+   stacked instead of squeezed into fixed columns. */
+@media (max-width: 560px) {
+  .rv-table, .rv-table thead, .rv-table tbody, .rv-table tr, .rv-table th, .rv-table td {
+    display: block;
+  }
+  .rv-table colgroup { display: none; }
+  .rv-table thead { display: none; }
+  .rv-table tbody:not(.rvt-group) tr {
+    padding: 8px 8px 10px;
+    border-bottom: 1px solid var(--seal-border);
+  }
+  .rv-table tbody:not(.rvt-group) tr:last-child { border-bottom: 0; }
+  .rv-table th[scope="row"] { padding: 0 0 2px; }
+  .rv-table td { padding: 2px 0; }
+  /* Whichever module built this row (app.js's row(), receipt-summary.js,
+     appendSummaryRow), the Value cell is always the second cell — force it
+     to wrap as continuous text at its own full card width, regardless of
+     which per-class mono/word-break rule (or none) it carries above. */
+  .rv-table td:nth-child(2) { word-break: break-word; overflow-wrap: anywhere; }
+  .rv-table .rvt-state::before { content: "Re-check: "; color: var(--seal-muted); font-weight: 600; }
+  .rv-table td:empty { display: none; }
+}
 /* group heading rows: their own single-row tbody so #receipt-summary keeps
    exactly six <tr> children (receipt-summary.test.mjs). */
 .rvt-group th { background: var(--seal-bg); color: var(--seal-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; padding: 6px 8px; }

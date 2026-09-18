@@ -62,23 +62,51 @@ function tipOf(node) {
 function bodyOf(tip) {
   return tip ? tip.querySelector(".tip-body") : null;
 }
+// The stylesheet anchors a tooltip body's right or left edge to its trigger
+// (`.tip-body` / `.tip-body.left`), a static per-instance choice that only
+// holds while that trigger happens to sit far enough from the edge it grows
+// toward. A trigger near either viewport edge (the first Tab stop on the
+// page, or a footer item on a narrow window) can still overflow off-screen.
+// This clamps the actually-rendered box back inside [0, viewport width],
+// regardless of which side the CSS anchored it to or how close the trigger
+// is to an edge.
+function clampToViewport(body) {
+  const win = body.ownerDocument && body.ownerDocument.defaultView;
+  if (!win) return;
+  body.style.removeProperty("transform");
+  const rect = body.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return; // not laid out (e.g. under test)
+  const pad = 4;
+  const viewportWidth = win.innerWidth;
+  let shift = 0;
+  if (rect.left < pad) shift = pad - rect.left;
+  else if (rect.right > viewportWidth - pad) shift = (viewportWidth - pad) - rect.right;
+  if (shift !== 0) body.style.transform = `translateX(${shift}px)`;
+}
 function show(tip) {
   const body = bodyOf(tip);
   if (!body) return;
   body.hidden = false;
+  clampToViewport(body);
   OPEN.add(tip);
 }
 function hide(tip) {
   if (!tip || tip.classList.contains("tip-pinned")) return;
   const body = bodyOf(tip);
-  if (body) body.hidden = true;
+  if (body) {
+    body.hidden = true;
+    body.style.removeProperty("transform");
+  }
   OPEN.delete(tip);
 }
 function hideAll() {
   for (const tip of [...OPEN]) {
     tip.classList.remove("tip-pinned");
     const body = bodyOf(tip);
-    if (body) body.hidden = true;
+    if (body) {
+      body.hidden = true;
+      body.style.removeProperty("transform");
+    }
   }
   OPEN.clear();
 }

@@ -259,6 +259,15 @@ function paintReceiptState(isExample) {
   // example's rows, raw JSON, checks, or narrative while merely hiding part of
   // the result.
   $("rv-table-checks").replaceChildren();
+  // Every fresh render starts with the table itself, and its "Checks —
+  // re-run on this device" group, visible. Paths whose content genuinely does
+  // not fit the table shape (errors, the control receipt) re-hide what they
+  // need after this call; a signed-family (Protect/Spine) receipt keeps the
+  // table (its Decision row and Receipt-group summary are real, populated
+  // content) and only hides the re-run-checks group, which does not apply to
+  // it.
+  $("rv-table").classList.remove("hidden");
+  $("rv-checks-group")?.classList.remove("hidden");
   for (const id of ["rv-decision-note", "rv-verdict", "rv-deny", "rv-checks", "rv-json", "rv-summary", "rv-outcome-tag", "rv-subline-text"])
     $(id).replaceChildren();
   $("rv-subline-tip").textContent = "";
@@ -615,7 +624,13 @@ async function renderSignedFamilyReceipt(text, receipt, family, { isExample, isC
   if (!isCurrent()) return;
   for (const node of document.querySelectorAll("[data-decision-only]")) node.hidden = true;
   $("rv-result").classList.remove("hidden");
-  $("rv-table").classList.add("hidden");
+  // Protect/Spine receipts do populate the Receipt group of #rv-table (the
+  // Decision row below, and the Family/Scope summary rows appended below) —
+  // that content must render visibly, the same as a kernel-decision receipt's
+  // table. Only the "Checks — re-run on this device" group does not apply to
+  // this family (its re-run checks go to the technical log instead), so only
+  // that group is hidden; the table itself stays visible.
+  $("rv-checks-group")?.classList.add("hidden");
   $("rv-tech").open = true;
   const scope = "Signing key: caller-supplied / UNPINNED. Operator authority and event occurrence are NOT ESTABLISHED. " +
     (family === "protect" ? "The receipt carries no producer kernel identity; replay uses this page's verified kernel." : "Spine checks commitments and signature, not kernel replay.");
