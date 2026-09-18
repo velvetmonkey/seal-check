@@ -77,3 +77,14 @@ const key = fs.readFileSync(path.join(ROOT, "examples", "spine-signer.pub"), "ut
     });
   });
 })().catch((error) => { console.error(error); process.exitCode = 1; });
+
+test("Protect canonical numbers accept finite fractions and retain non-finite refusals", async () => {
+  const { canonical } = await import("file://" + path.join(ROOT, "protect-receipt.js"));
+  for (const value of [1.5, -0.125, 1e-7, 0, -0, 42, Number.MAX_SAFE_INTEGER]) {
+    const nested = { values: [value] };
+    assert.equal(canonical(nested), JSON.stringify(nested));
+  }
+  for (const value of [NaN, Infinity, -Infinity]) {
+    assert.throws(() => canonical({ values: [value] }), { code: "number_not_canonical" });
+  }
+});

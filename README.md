@@ -73,16 +73,13 @@ identified or re-run that producer's binary. Authority and event occurrence rema
 unverified. The browser port follows `checker/seal-receipt-v2.mjs` at that commit;
 its JSON scanner additionally accepts ordinary whitespace between object members.
 
-**Number compatibility.** `protect-receipt.js`'s `canonical()` currently
-accepts only finite **safe integers** (`Number.isInteger` and
-`Number.isSafeInteger` both true) for every number in a receipt, including
-inside `arguments`. Seal's own Protect v2 contract
-([`docs/SEAL-RECEIPT-V2.md`](https://github.com/velvetmonkey/seal/blob/main/docs/SEAL-RECEIPT-V2.md)
-in `seal`) accepts finite decimals, negative fractions, and scientific
-notation. A receipt whose arguments the producer and its own checker treat as
-canonical because it contains a decimal number will currently be refused here
-as `number_not_canonical`. Integer-only receipts are unaffected. This is a
-known gap against the current spec, not a bug in the receipt you pasted.
+**Number compatibility.** `protect-receipt.js`'s `canonical()` accepts finite
+JSON numbers (`Number.isFinite`), including decimals, negative fractions, and
+scientific notation in `arguments`, as required by Seal's Protect v2 contract
+([`docs/SEAL-RECEIPT-V2.md`](https://github.com/velvetmonkey/seal/blob/main/docs/SEAL-RECEIPT-V2.md)).
+Non-finite numbers are refused as `number_not_canonical`; malformed JSON is
+refused during document parsing. The `now` field still requires a non-negative
+safe integer. Signature, commitment, and replay checks still apply.
 
 Older `seal.spine/v1` receipts use the existing Spine verifier: signature plus
 decision, tool, arguments and effect bindings. That family does not support kernel
