@@ -3,6 +3,7 @@
 // This module deliberately does not parse, validate, canonicalize, or hash a
 // receipt. Those jobs remain in receipt-format.js and receipt.js.
 import { KERNEL_HASH_SCOPE_LIMIT_TEXT } from "./page-claims.js";
+import { createTooltip } from "./tooltip.js";
 
 function present(receipt, field) {
   return Object.prototype.hasOwnProperty.call(receipt || {}, field);
@@ -145,16 +146,65 @@ export function clearReceiptSummary(container) {
   container.replaceChildren();
 }
 
+// Compact value per row, built only from the same fields the entry's own
+// `fields` list already names — this restates them short for the table cell.
+// receiptSummaryEntries()'s own `text` sentence is unchanged (byte for byte)
+// and becomes that row's tooltip; nothing here recomputes a verification
+// result, it only re-states already-computed fields for a narrower cell.
+function compactSummaryValue(receipt, entry) {
+  const r = receipt || {};
+  switch (entry.label) {
+    case "What was asked":
+      return `${valueOrAbsent(r, "tool")} ${present(r, "arguments") ? readableJson(r.arguments) : "absent"}`;
+    case "What was decided, and by whom": {
+      const certs = Array.isArray(r.certs) ? r.certs : null;
+      const gateText = certs === null ? "certs absent"
+        : certs.length ? certs.map((c) => `${certKernel(c)} ${present(c, "verdict") ? String(c.verdict) : "no verdict"}`).join(" · ")
+          : "certs: empty array";
+      return `${gateText} · deny_kernel ${valueOrAbsent(r, "deny_kernel")}`;
+    }
+    case "What the receipt binds":
+      return `canonical_request_sha256 ${valueOrAbsent(r, "canonical_request_sha256")}  ·  args_hash ${valueOrAbsent(r, "args_hash")}`;
+    case "Time base":
+      return present(r, "now") ? `now = ${readableJson(r.now)}` : "now: absent";
+    case "Mediation":
+      return present(r, "bypass") ? `bypass = ${readableJson(r.bypass)}` : "bypass: absent";
+    case "What this receipt does not say":
+      return `kernel_identity.wasm_sha256 = ${pathValueOrAbsent(r, ["kernel_identity", "wasm_sha256"])}`;
+    default:
+      return entry.text;
+  }
+}
+
+// One <tr> per entry: [th label, td value, td "recorded", td tooltip-trigger].
+// The test harness's fake document builds these rows too (with a minimal
+// FakeNode that has no innerHTML), so every assignment here is textContent —
+// never innerHTML — and every element comes from doc.createElement, never a
+// bare global `document`.
 export function renderReceiptSummary(container, receipt) {
   if (!container) return;
   clearReceiptSummary(container);
   const doc = container.ownerDocument || document;
+  let i = 0;
   for (const entry of receiptSummaryEntries(receipt)) {
-    const row = doc.createElement("p");
-    row.className = "receipt-summary-line";
-    const label = doc.createElement("strong");
-    label.textContent = entry.label + ": ";
-    row.append(label, doc.createTextNode(entry.text));
-    container.append(row);
+    i += 1;
+    const tr = doc.createElement("tr");
+    const label = doc.createElement("th");
+    label.textContent = entry.label;
+    const value = doc.createElement("td");
+    value.textContent = compactSummaryValue(receipt, entry);
+    if (entry.label === "What was decided, and by whom" && /CONFLICT:|split decision/.test(entry.text)) {
+      const flag = doc.createElement("strong");
+      flag.className = "rvt-fail";
+      flag.textContent = entry.text.includes("CONFLICT:") ? " CONFLICT — see ⓘ" : " split decision — see ⓘ";
+      value.append(flag);
+    }
+    const state = doc.createElement("td");
+    state.className = "muted rvt-state";
+    state.textContent = "recorded";
+    const tipCell = doc.createElement("td");
+    tipCell.append(createTooltip(doc, entry.label, entry.text, { id: `tip-summary-${i}` }));
+    tr.append(label, value, state, tipCell);
+    container.append(tr);
   }
 }

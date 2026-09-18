@@ -59,7 +59,7 @@ body {
   margin: 0; background: var(--seal-bg); color: var(--seal-text);
   font: 16.5px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
-.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
 
 :where(a) { color: var(--seal-accent); }
 :focus-visible {
@@ -75,8 +75,7 @@ header {
   padding: 10px 16px; border-bottom: 1px solid var(--seal-border);
   background: var(--seal-surface);
 }
-h1 { margin: 0; font-size: 21px; letter-spacing: -0.4px; }
-h1::before { content: "\1F512 "; } /* lock */
+h1 { margin: 0; font-size: 18px; letter-spacing: -0.4px; }
 header .header-actions { margin: 0 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -104,43 +103,57 @@ code { background: var(--seal-accent-soft); padding: 1px 5px; border-radius: 4px
 .pill-ok { color: var(--seal-success); border-color: var(--seal-success); background: var(--seal-success-soft); }
 .pill-bad { color: var(--seal-danger); border-color: var(--seal-danger); background: var(--seal-danger-soft); }
 
-/* Info disclosure: the "detail on demand" primitive used throughout this
-   page. Native <details>/<summary> — keyboard-operable (the summary is a
-   default focusable, Enter/Space-toggled control) and screen-reader-sensible
-   without any custom ARIA. Closed by default; nothing it contains is ever
-   deleted, only reached one activation away instead of shown as running
-   prose. */
-details.info-disclosure, details.rv-plain, details.rv-limit {
+/* The one surviving disclosure: the technical log. Native <details>/<summary>
+   — keyboard-operable (the summary is a default focusable, Enter/Space-
+   toggled control) and screen-reader-sensible without any custom ARIA.
+   Closed by default; nothing it contains is ever deleted. Every other
+   explanatory disclosure from the previous design moved to a ⓘ tooltip
+   (below) instead — jwtms redesign, round 2. */
+#rv-tech {
   border: 1px solid var(--seal-muted); border-radius: var(--seal-radius);
   background: var(--seal-surface); padding: 0;
 }
-details.info-disclosure > summary,
-details.rv-plain > summary, details.rv-limit > summary,
 #rv-tech > summary {
   cursor: pointer; list-style: none; user-select: none;
   padding: 8px 12px; font-size: 14px; font-weight: 600; color: var(--seal-muted);
   display: flex; align-items: center; gap: 6px;
 }
-details.info-disclosure > summary::-webkit-details-marker,
-details.rv-plain > summary::-webkit-details-marker,
-details.rv-limit > summary::-webkit-details-marker { display: none; }
-details.info-disclosure > summary::before,
-details.rv-plain > summary::before, details.rv-limit > summary::before {
+#rv-tech > summary::-webkit-details-marker { display: none; }
+#rv-tech > summary::before {
   content: "\25B8"; /* ▸ */ display: inline-block; transition: transform 0.1s ease;
 }
-details[open].info-disclosure > summary::before,
-details[open].rv-plain > summary::before, details[open].rv-limit > summary::before {
-  transform: rotate(90deg);
+#rv-tech[open] > summary::before { transform: rotate(90deg); }
+#rv-tech > summary:hover { color: var(--seal-text); }
+
+/* Shared tooltip pattern (tooltip.js): a focusable ⓘ button plus a hoverable
+   plain-text body, connected by aria-describedby. Replaces every disclosure
+   this design cuts — nothing it held is deleted, only reached via hover,
+   focus, or a tap instead of an inline paragraph. */
+.tip { position: relative; display: inline-flex; align-items: center; }
+.tip-btn {
+  font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
+  width: 16px; height: 16px; padding: 0; margin-left: 4px;
+  border-radius: 999px; border: 1px solid var(--seal-muted);
+  background: transparent; color: var(--seal-muted);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-style: italic; font-family: Georgia, serif;
 }
-details.info-disclosure > summary:hover,
-details.rv-plain > summary:hover, details.rv-limit > summary:hover { color: var(--seal-text); }
-details.info-disclosure > .info-body,
-details.rv-plain > p, details.rv-limit > p {
-  margin: 0; padding: 0 12px 10px; max-width: 76ch;
+.tip-btn:hover, .tip-btn:focus-visible { border-color: var(--seal-accent); color: var(--seal-accent); }
+.tip-btn-text {
+  width: auto; height: auto; border-radius: var(--seal-radius);
+  padding: 4px 10px; font: inherit; font-size: 13px; gap: 4px;
 }
-details.info-disclosure > .info-body > p { margin: 6px 0; }
-header details.info-disclosure { font-size: 13px; }
-header details.info-disclosure > summary { padding: 4px 10px; font-weight: 500; }
+.tip-body {
+  position: absolute; top: 100%; right: 0; margin-top: 4px;
+  width: max-content; max-width: 36ch; z-index: 20;
+  background: var(--seal-surface); color: var(--seal-text);
+  border: 1px solid var(--seal-muted); border-radius: var(--seal-radius);
+  padding: 8px 10px; font-size: 13px; font-weight: 400; line-height: 1.4;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  text-align: left;
+}
+.tip-body.left { right: auto; left: 0; }
+header .tip { font-size: 13px; }
 
 section { padding: 16px 0; border-bottom: 1px solid var(--seal-border); }
 h2 { font-size: 21px; margin: 0 0 4px; }
@@ -156,10 +169,9 @@ textarea {
 
 .result { margin-top: 14px; }
 .hidden { display: none; }
-.verdict-row { display: flex; gap: 12px; align-items: baseline; }
 /* Verdict never rests on colour: the word itself is the signal, and the box
    around it differs in fill and border weight per state as well as hue. */
-.verdict { font-family: var(--mono); font-weight: 700; font-size: 21px; letter-spacing: 1px; padding: 2px 9px; border-radius: 5px; border: 1px solid var(--seal-border); }
+.verdict { font-family: var(--mono); font-weight: 700; font-size: 18px; letter-spacing: 1px; padding: 2px 9px; border-radius: 5px; border: 1px solid var(--seal-border); }
 .v-block { color: var(--seal-danger); background: var(--seal-danger-soft); border: 2px solid var(--seal-danger); }
 .v-allow { color: var(--seal-success); background: var(--seal-success-soft); border-color: var(--seal-success); }
 .v-error { color: var(--seal-warning); background: var(--seal-warning-soft); border-color: var(--seal-warning); }
@@ -205,7 +217,6 @@ footer h3 { margin-bottom: 6px; }
 }
 @media (max-width: 700px) {
   .claim-grid { grid-template-columns: 1fr; }
-  header .info-disclosure { margin-left: 0; }
 }
 
 /* deep-linked receipt verification */
@@ -219,79 +230,122 @@ footer h3 { margin-bottom: 6px; }
   padding: .9rem 1rem;
   margin-bottom: 1.5rem;
 }
+/* Second finding from the round-2 read: this alert rendered on every page
+   load because nothing ever hid it. It is legacy-anchor navigation feedback
+   (see legacy-tools-redirect.js) — only relevant while its own fragment is
+   the current target. */
+#legacy-receipt-summary:not(:target) { display: none; }
+
 .rv-checks li { padding: .15rem 0; font-size: 14px; overflow-wrap: anywhere; }
-#receipt-verify .reason, #rv-context, .rv-subline { overflow-wrap: anywhere; }
+#receipt-verify .reason, .rv-subline { overflow-wrap: anywhere; }
 .rv-ok { color: var(--seal-success); }
 .rv-bad { color: var(--seal-danger); font-weight: 600; }
 .rv-skip { color: var(--seal-muted); }
 
+/* Two panes: input left, output right at >=900px; stacked input-first below.
+   DOM order is already input-then-output, so no `order:` is used anywhere —
+   a narrow visitor sees the textarea first, never an empty output slot. */
+.rv-panes { display: grid; grid-template-columns: 1fr; gap: 20px 24px; align-items: start; }
+@media (min-width: 900px) {
+  .rv-panes { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+}
+.input-pane textarea#paste-input { min-height: 180px; }
+@media (min-width: 900px) {
+  .input-pane textarea#paste-input { min-height: 420px; }
+}
+.output-pane { min-width: 0; }
+.safety-note { font-size: 13.5px; margin-top: 6px; }
+
 /* the re-check verdict banner: first thing a receipt-holder sees */
-.rv-banner { border: 1px solid var(--seal-border); border-radius: 8px; padding: 14px 16px; margin: 12px 0 8px; background: var(--seal-surface); }
+.rv-banner { border: 1px solid var(--seal-border); border-radius: 8px; padding: 14px 16px; margin: 0 0 8px; background: var(--seal-surface); }
 .rv-banner.ok { background: var(--seal-success-soft); border-color: var(--seal-success); }
 .rv-banner.bad { background: var(--seal-danger-soft); border: 2px solid var(--seal-danger); }
 .rv-banner.warn { background: var(--seal-warning-soft); border-color: var(--seal-warning); }
-.rv-headline { font-size: clamp(24px, 4vw, 34px); font-weight: 700; letter-spacing: -0.5px; line-height: 1.15; }
+.rv-banner-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rv-headline { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.15; }
 .rv-banner.ok .rv-headline { color: var(--seal-success); }
 .rv-banner.bad .rv-headline { color: var(--seal-danger); }
 .rv-banner.warn .rv-headline { color: var(--seal-warning); }
-.rv-subline { margin: 8px 0 0; font-size: 15.5px; color: var(--seal-text); max-width: 76ch; }
+.rv-outcome-tag { font-family: var(--mono); font-size: 12px; color: var(--seal-muted); white-space: nowrap; }
+.rv-outcome-tag:empty { display: none; }
+.rv-subline { margin: 6px 0 0; font-size: 14.5px; color: var(--seal-text); max-width: 76ch; display: flex; align-items: flex-start; gap: 4px; }
 .rv-fails { margin: 8px 0 0; padding-left: 1.3em; color: var(--seal-danger); }
 .rv-fails li { padding: 1px 0; font-size: 15px; }
 
-#receipt-verify .verdict { font-size: 24px; }
-
-/* receipt mode: the panicked reader gets the answer, not a branding block */
-body.receipt-mode header { padding: 8px 16px; }
-body.receipt-mode header h1 { font-size: 17px; }
-
-/* the one input: paste box on top, result directly underneath */
+/* the one input: label + textarea on top of the left pane */
 #receipt-verify { padding-top: 12px; }
 .paste-label { display: block; font-size: 17px; font-weight: 600; margin: 0 0 6px; }
 #paste-input { margin: 0; font-size: 13.5px; }
 .example-label { margin: 0 0 14px; padding: 8px 12px; border-left: 4px solid var(--seal-warning); background: var(--seal-warning-soft); color: var(--seal-warning); border-radius: 0 var(--seal-radius) var(--seal-radius) 0; font-size: 13.5px; }
 #paste-error:empty { display: none; }
 
-/* Compact check table: label + status only by default. The full technical
-   rationale for a row lives in a per-row disclosure so it is one activation
-   away, never lost — requirement is "detail on demand", not "detail
-   deleted". The five-plus check dimensions stay separate rows; nothing here
-   merges them into a single pass/fail badge. */
-.rv-table-wrap { overflow-x: auto; margin: 10px 0; }
-.rv-table { font-size: 14px; }
-.rv-table td, .rv-table th { padding: 6px 8px; }
-.rv-table td:first-child { font-weight: 600; min-width: 11em; }
+/* One table, two groups (Receipt / Checks). Field · Value · Re-check · ⓘ.
+   Compact by default; the full sentence for every row lives in that row's ⓘ
+   tooltip, never deleted, reached by hover, focus, or a tap. Nothing here
+   ever renders as a single pass/fail badge — each dimension is its own row,
+   and Signer authority / Decision occurred / Targets authorised can never
+   render a green checkmark. */
+.rv-table-wrap { overflow-x: auto; margin: 10px 0; background: var(--seal-surface); border: 1px solid var(--seal-border); border-radius: var(--seal-radius); }
+.rv-table { font-size: 13.5px; table-layout: fixed; margin-bottom: 0; }
+.rv-table th, .rv-table td { padding: 6px 8px; }
+.rvt-col-field { width: 11em; }
+.rvt-col-state { width: 9em; }
+.rvt-col-tip { width: 2em; }
+.rv-table th[scope="row"] { font-weight: 600; }
+/* The Value column (2nd cell of every row) can carry an unbroken hash or
+   JSON blob whether or not the row's markup gave it the .rvt-value class —
+   the Decision row, appendSummaryRow's signed-family rows, and
+   renderReceiptSummary's rows all build a bare <td> here. Without a wrap
+   rule that bare <td> lets a 64-char hex string overflow its fixed column
+   at every width, not just below the ~560px card breakpoint, silently
+   pushing .rv-table-wrap's scrollable width past its container. Wrapping
+   the column itself (not just the .rvt-value-classed Checks rows) fixes
+   that at every width, matching the card layout's own wrap rule below. */
+.rv-table td:nth-child(2) { overflow-wrap: anywhere; }
+.rv-table .rvt-value { font-family: var(--mono); word-break: break-all; }
 .rv-table .rvt-state { white-space: nowrap; font-family: var(--mono); font-size: 13px; }
 .rv-table .rvt-pass { color: var(--seal-success); }
 .rv-table .rvt-fail { color: var(--seal-danger); font-weight: 700; }
 .rv-table .rvt-skip { color: var(--seal-warning); }
-.rv-table td.rvt-detail { color: var(--seal-muted); padding: 2px 4px; }
-.rvt-detail-toggle {
-  cursor: pointer; list-style: none; font-size: 12.5px; color: var(--seal-accent);
-  padding: 3px 6px; border-radius: 4px; display: inline-block;
-}
-.rvt-detail-toggle::-webkit-details-marker { display: none; }
-.rvt-detail-toggle:hover, .rvt-detail-toggle:focus-visible { text-decoration: underline; }
-.rvt-detail-body { margin: 4px 2px 2px; max-width: 60ch; overflow-wrap: anywhere; color: var(--seal-muted); font-size: 13px; }
 /* a failed row is tinted AND rule-marked, so the failure survives grayscale */
-.rv-table tr.rvt-row-fail td { background: var(--seal-danger-soft); }
-.rv-table tr.rvt-row-fail td:first-child { box-shadow: inset 3px 0 0 var(--seal-danger); }
-.rv-context { font-size: 15.5px; max-width: 76ch; }
-.rv-context:empty { display: none; }
-.rv-plain, .rv-limit { margin: 12px 0; }
-#rv-tech { margin-top: 12px; border: 1px solid var(--seal-muted); border-radius: var(--seal-radius); background: var(--seal-surface); padding: 0; }
-#rv-tech > summary { font-size: 14px; padding: 8px 12px; }
+.rv-table tr.rvt-row-fail td, .rv-table tr.rvt-row-fail th { background: var(--seal-danger-soft); }
+.rv-table tr.rvt-row-fail th { box-shadow: inset 3px 0 0 var(--seal-danger); }
+
+/* Below ~560px the fixed 11em/9em/2em columns leave Value a few characters
+   wide, wrapping hashes and JSON one syllable per line. Below that width the
+   table becomes one card per row instead: Field (already a <th scope="row">)
+   as the card's heading, then Value and Re-check each on their own full-width
+   line, so long hashes read as continuous wrapped text, not fragments. No
+   content changes — every field, tooltip and detail is still here, just
+   stacked instead of squeezed into fixed columns. */
+@media (max-width: 560px) {
+  .rv-table, .rv-table thead, .rv-table tbody, .rv-table tr, .rv-table th, .rv-table td {
+    display: block;
+  }
+  .rv-table colgroup { display: none; }
+  .rv-table thead { display: none; }
+  .rv-table tbody:not(.rvt-group) tr {
+    padding: 8px 8px 10px;
+    border-bottom: 1px solid var(--seal-border);
+  }
+  .rv-table tbody:not(.rvt-group) tr:last-child { border-bottom: 0; }
+  .rv-table th[scope="row"] { padding: 0 0 2px; }
+  .rv-table td { padding: 2px 0; }
+  /* Whichever module built this row (app.js's row(), receipt-summary.js,
+     appendSummaryRow), the Value cell is always the second cell — force it
+     to wrap as continuous text at its own full card width, regardless of
+     which per-class mono/word-break rule (or none) it carries above. */
+  .rv-table td:nth-child(2) { word-break: break-word; overflow-wrap: anywhere; }
+  .rv-table .rvt-state::before { content: "Re-check: "; color: var(--seal-muted); font-weight: 600; }
+  .rv-table td:empty { display: none; }
+}
+/* group heading rows: their own single-row tbody so #receipt-summary keeps
+   exactly six <tr> children (receipt-summary.test.mjs). */
+.rvt-group th { background: var(--seal-bg); color: var(--seal-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; padding: 6px 8px; }
+
+#rv-tech { margin-top: 12px; padding-bottom: 0; }
 #rv-tech > *:not(summary) { padding-left: 12px; padding-right: 12px; }
 #rv-tech > :last-child { padding-bottom: 12px; }
-
-/* The re-check result: a two-column band for the two disclosure summaries,
-   so they sit side by side instead of stacking into another screen. */
-#rv-result:not(.hidden) { display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr); gap: 4px 20px; align-items: start; }
-#rv-result > * { grid-column: 1 / -1; min-width: 0; }
-#rv-result > .rv-plain, #rv-result > .rv-limit { grid-column: auto; }
-
-@media (max-width: 700px) {
-  #rv-result:not(.hidden) { grid-template-columns: 1fr; }
-}
 
 /* Local receipt/key file controls share the existing page palette. */
 #signer-controls { margin: 12px 0; }
