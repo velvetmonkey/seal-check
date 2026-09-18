@@ -292,6 +292,16 @@ footer h3 { margin-bottom: 6px; }
 .rvt-col-state { width: 9em; }
 .rvt-col-tip { width: 2em; }
 .rv-table th[scope="row"] { font-weight: 600; }
+/* The Value column (2nd cell of every row) can carry an unbroken hash or
+   JSON blob whether or not the row's markup gave it the .rvt-value class —
+   the Decision row, appendSummaryRow's signed-family rows, and
+   renderReceiptSummary's rows all build a bare <td> here. Without a wrap
+   rule that bare <td> lets a 64-char hex string overflow its fixed column
+   at every width, not just below the ~560px card breakpoint, silently
+   pushing .rv-table-wrap's scrollable width past its container. Wrapping
+   the column itself (not just the .rvt-value-classed Checks rows) fixes
+   that at every width, matching the card layout's own wrap rule below. */
+.rv-table td:nth-child(2) { overflow-wrap: anywhere; }
 .rv-table .rvt-value { font-family: var(--mono); word-break: break-all; }
 .rv-table .rvt-state { white-space: nowrap; font-family: var(--mono); font-size: 13px; }
 .rv-table .rvt-pass { color: var(--seal-success); }
