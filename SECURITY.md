@@ -10,3 +10,7 @@ Report security issues privately to the repository owner with:
 - any key, token, or operator action involved.
 
 Do not include real customer secrets, production approvals, or private model prompts in reports. The expected response path is private triage, reproduction, fix, local commit, and operator review before any public disclosure.
+
+## Private reporting destination
+
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/velvetmonkey/seal-check/security/advisories/new). Repository-specific availability was checked on 18 September 2026. Include the affected revision, a minimal redacted reproduction and the relevant receipt family. Do not post private receipts, credentials or signing seeds in a public issue.

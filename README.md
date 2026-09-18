@@ -1,5 +1,8 @@
 # seal-check
 
+Full task guides: [Check receipts](https://velvetmonkey.github.io/seal/check/). Start with the hosted guide, then use this repository for source contracts and fixtures.
+
+
 [![CI](https://github.com/velvetmonkey/seal-check/actions/workflows/ci.yml/badge.svg)](https://github.com/velvetmonkey/seal-check/actions/workflows/ci.yml)
 
 **Check a Seal decision receipt in your browser. Inspect signature and
