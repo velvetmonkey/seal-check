@@ -103,12 +103,22 @@ function renderCheckTable(r, receipt) {
   const tbl = $("rv-table");
   const tb = tbl.querySelector("tbody");
   tb.replaceChildren();
+  // Presentation only: `detail` is the exact same sentence verifyReceipt's
+  // caller already computed for this row. It is not deleted or shortened —
+  // only reached one activation away (a native, keyboard-operable <details>)
+  // instead of shown as running prose in every row by default, so the
+  // compact [label, status] pair is what a visitor scans first.
   const row = (what, state, detail) => {
     const tr = el("tr", state === "fail" ? "rvt-row-fail" : null);
     const stateText = state === "pass" ? "✓ checked — passed"
       : state === "fail" ? "✗ checked — FAILED" : "— NOT CHECKED";
-    tr.append(el("td", null, what), el("td", "rvt-state rvt-" + state, stateText),
-      el("td", "rvt-detail", detail));
+    const detailCell = el("td", "rvt-detail");
+    const disclosure = document.createElement("details");
+    const summary = el("summary", "rvt-detail-toggle", "detail");
+    const body = el("p", "rvt-detail-body", detail);
+    disclosure.append(summary, body);
+    detailCell.append(disclosure);
+    tr.append(el("td", null, what), el("td", "rvt-state rvt-" + state, stateText), detailCell);
     tb.append(tr);
   };
   const sha12 = (s) => (typeof s === "string" ? s.slice(0, 12) + "…" : "?");
