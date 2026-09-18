@@ -2,19 +2,41 @@
 
 [![CI](https://github.com/velvetmonkey/seal-check/actions/workflows/ci.yml/badge.svg)](https://github.com/velvetmonkey/seal-check/actions/workflows/ci.yml)
 
-**Paste a receipt. A tampered one fails in your browser — the real kernel verifies its signed config and re-derives the verdict live. No server, no account, no faith required.**
+**Check a Seal decision receipt in your browser. Inspect signature and
+binding checks, and replay consistency where the receipt format supports it.**
+
+Seal is the approval-gate product. Its companion tools let you examine
+receipt and assurance evidence separately from the running gate.
+
+| I want to… | Start here | What it does |
+| --- | --- | --- |
+| Install the gate | [seal](https://github.com/velvetmonkey/seal) | Gate selected Claude Code MCP tool calls with approval tied to the exact request. |
+| Check a receipt | [seal-check](https://github.com/velvetmonkey/seal-check) | Check supported decision receipts locally in your browser. |
+| Review the evidence | [seal-assurance-kit](https://github.com/velvetmonkey/seal-assurance-kit) | Run receipt, policy-coverage and conformance checks from the command line. |
+
+For audit detail, see the [architecture and verification relationships](https://github.com/velvetmonkey/seal/blob/main/docs/assurance/architecture.md).
+
+Receipt contents stay in your browser; verification runs locally.
+A passing check establishes only the properties reported for that receipt.
+It does not by itself establish operator identity, prove that a tool effect
+occurred, or certify the deployment. Verification still depends on the
+checker, its bundled kernel, your browser, and any independently obtained
+keys required by the receipt format.
 
 ![A tampered receipt refused by seal-check: signature and request-byte checks pass, but the on-device re-run derives ALLOW against the receipt's flipped verdict, so kernel_replay_consistent is false and the receipt is REFUSED.](docs/img/tampered-receipt-refused.png)
 
 <sub>The shipped tamper example, refused. The signature is valid and the request bytes match — those checks pass. What fails is the re-run: the kernel re-derives `ALLOW` from the receipt's own call and config, the receipt claims `BLOCK`, so `kernel_replay_consistent: false`. Note `authority_trusted: UNPINNED` in the same panel: the browser path verifies the decision, never operator authority. Reproduce with `python3 -m http.server 8000` and the "Verify a TAMPERED receipt" button.</sub>
 
-Drop a tool-call or receipt JSON (or open a deep link). seal-check re-runs the proven decision procedure over the exact bytes. Genuine receipts can be authentic and replay-consistent; operator authority additionally requires an independently provisioned public-key pin.
+Paste supported receipt JSON or open a supported receipt link.
+The page reports the checks available for that receipt format.
+See the receipt-specific sections below for signing-key requirements,
+replay support and authority limits.
 
-One command serves the page. Click the tamper example and watch it fail. That's the product.
+Serve the browser checker locally, then use the tamper example to see a failed check.
 
 ## Quick start: verify, then tamper
 
-*Browser (the product):* serve the page and click the tamper example.
+*Browser checker:* serve the page and click the tamper example.
 
 ```bash
 python3 -m http.server 8000   # then open http://localhost:8000 and hit "Verify a receipt"
@@ -53,7 +75,7 @@ The existing signed-config decision-receipt checks remain in their own route.
 
 A genuine ALLOW receipt is shipped at [`examples/allow.receipt.json`](examples/allow.receipt.json). Paste it into the page: signature and replay pass, while authority remains visibly unpinned. For the deterministic test receipt, independently pin its documented test public key when exercising the authorised CLI leg.
 
-Now tamper with it: change `"verdict": "ALLOW"` to `"verdict": "BLOCK"` and re-paste. It FAILS — the kernel re-derives `ALLOW` from the receipt's own call and config, so the flipped verdict no longer matches (`verdictMatch: false`, `allGood: false`). No server, no account, no taking our word for it. Verified on this machine:
+Now tamper with it: change `"verdict": "ALLOW"` to `"verdict": "BLOCK"` and re-paste. It FAILS — the kernel re-derives `ALLOW` from the receipt's own call and config, so the flipped verdict no longer matches (`verdictMatch: false`, `allGood: false`). The example produces these results:
 
 ```
 verifyReceipt(genuineText).outcome = "unpinned"   allGood = false
@@ -96,9 +118,18 @@ Nothing you paste leaves the page. The page verifies a decision artifact; it doe
 
 ## For evaluators and auditors
 
-Seal's proof story is intentionally narrow. The Lean theorems cover the mediation kernel and selected model properties. The binaries and browser artifacts are connected to that proof by reproducible conformance tests, not by a theorem about every compiled instruction. For this page's wasm specifically, a differential harness drives identical inputs through the deployed `seal.wasm` and the proven model: currently 13/13 mediation-corpus adversarial cases agree with 0 disagreements — evidence, not a theorem ([assurance statement](docs/SEAL-ASSURANCE-STATEMENT.md)).
+Lean proofs establish specified properties of decision models; they do not
+establish correctness of the whole deployed system. For the shipped Seal
+product, correspondence between the proved authorization model and the
+shipped authorization path is currently neither tested nor proved.
+Reproducible builds and finite conformance checks establish only their
+stated results; receipt replay does not close that gap.
 
-Start with the family [claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/archive/CLAIMS-MATRIX.md) (one table: proven / tested / assumed / not claimed) and [What Seal is NOT](https://github.com/velvetmonkey/seal-assurance-kit/blob/main/docs/WHAT-SEAL-IS-NOT.md), then [docs/PROOF-REFERENCE.md](docs/PROOF-REFERENCE.md) for theorem names and file locations, [docs/CONFORMANCE.md](docs/CONFORMANCE.md) for the byte-identity claim, and [docs/TCB.md](docs/TCB.md) for what remains trusted.
+See [Seal's current shipped-product assurance scope](https://github.com/velvetmonkey/seal/blob/main/README.md#guarantees-and-non-guarantees).
+
+For this page's wasm specifically, a differential harness drives identical inputs through the deployed `seal.wasm` and the proven model: currently 13/13 mediation-corpus adversarial cases agree with 0 disagreements — evidence, not a theorem ([assurance statement](docs/SEAL-ASSURANCE-STATEMENT.md)).
+
+Start with the [Archived family claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/archive/CLAIMS-MATRIX.md) (one table: proven / tested / assumed / not claimed) and [What Seal is NOT](https://github.com/velvetmonkey/seal-assurance-kit/blob/main/docs/WHAT-SEAL-IS-NOT.md), then [docs/PROOF-REFERENCE.md](docs/PROOF-REFERENCE.md) for theorem names and file locations, [docs/CONFORMANCE.md](docs/CONFORMANCE.md) for the byte-identity claim, and [docs/TCB.md](docs/TCB.md) for what remains trusted.
 
 Mandatory non-claims (canonical copy: [docs/LIMITATIONS.md](docs/LIMITATIONS.md)):
 
@@ -134,23 +165,20 @@ node test/receipt-format-v3.test.cjs # v3 record_version 3 + Object B signature
 node test/receipt-document.test.cjs  # §12.6: the received bytes, not just the parsed object
 ```
 
-## The Seal family
+## Audit the wider Seal family
 
-_The Seal fleet repositories are public; these links resolve for everyone. `witness-check` remains proprietary._
+The [architecture and verification relationships](https://github.com/velvetmonkey/seal/blob/main/docs/assurance/architecture.md)
+describe the product path, proof sources, supporting components and shared
+verification dependencies.
 
-- [seal](https://github.com/velvetmonkey/seal): the public umbrella story, product map, and evaluator path.
-- [mcp-seal-dev](https://github.com/velvetmonkey/mcp-seal-dev): The rulebook, proven.
-- [seal-host](https://github.com/velvetmonkey/seal-host): The guard at the door.
-- [seal-check](https://github.com/velvetmonkey/seal-check): Don't trust. Verify.
-- [seal-live-demo](https://github.com/velvetmonkey/seal-live-demo): Watch it work.
-- [seal-assurance-kit](https://github.com/velvetmonkey/seal-assurance-kit): Check your own boundary.
-- witness-check: The sufficiency analyzer. (proprietary; no public repository link)
-- [seal-verify-action](https://github.com/velvetmonkey/seal-verify-action): Gate receipts in CI.
+The browser checker and assurance CLI can run separately from the Seal
+deployment. They share kernel and receipt-format dependencies, so agreement
+between them can also reflect a shared defect.
 
 ## Documentation
 
 - [What Seal is NOT](https://github.com/velvetmonkey/seal-assurance-kit/blob/main/docs/WHAT-SEAL-IS-NOT.md) — read this first (public kit repo)
-- [Family claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/archive/CLAIMS-MATRIX.md) · [family architecture map](https://github.com/velvetmonkey/seal/blob/main/docs/assurance/architecture.md) (public umbrella)
+- [Archived family claims matrix](https://github.com/velvetmonkey/seal/blob/main/docs/archive/CLAIMS-MATRIX.md) · [family architecture map](https://github.com/velvetmonkey/seal/blob/main/docs/assurance/architecture.md) (public umbrella)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Threat model](docs/THREAT-MODEL.md)
 - [Assumptions](docs/ASSUMPTIONS.md)
