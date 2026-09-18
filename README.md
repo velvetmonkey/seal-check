@@ -25,22 +25,35 @@ keys required by the receipt format.
 
 ![A tampered receipt refused by seal-check: signature and request-byte checks pass, but the on-device re-run derives ALLOW against the receipt's flipped verdict, so kernel_replay_consistent is false and the receipt is REFUSED.](docs/img/tampered-receipt-refused.png)
 
-<sub>The shipped tamper example, refused. The signature is valid and the request bytes match — those checks pass. What fails is the re-run: the kernel re-derives `ALLOW` from the receipt's own call and config, the receipt claims `BLOCK`, so `kernel_replay_consistent: false`. Note `authority_trusted: UNPINNED` in the same panel: the browser path verifies the decision, never operator authority. Reproduce with `python3 -m http.server 8000` and the "Verify a TAMPERED receipt" button.</sub>
+<sub>The shipped tamper example, refused. The signature is valid and the request bytes match — those checks pass. What fails is the re-run: the kernel re-derives `ALLOW` from the receipt's own call and config, the receipt claims `BLOCK`, so `kernel_replay_consistent: false`. Note `authority_trusted: UNPINNED` in the same panel: the browser path verifies the decision, never operator authority. Reproduce at https://velvetmonkey.github.io/seal-check/ (or your own local server) by pasting [`examples/allow.receipt.json`](examples/allow.receipt.json), then changing its `"verdict": "ALLOW"` to `"verdict": "BLOCK"` and re-pasting — the page has no separate "Verify" button; it checks on paste.</sub>
 
 Paste supported receipt JSON or open a supported receipt link.
-The page reports the checks available for that receipt format.
+The page reports the checks available for that receipt format, as you paste
+or open the file — there is no separate submit/verify control.
 See the receipt-specific sections below for signing-key requirements,
 replay support and authority limits.
 
-Serve the browser checker locally, then use the tamper example to see a failed check.
+Use the hosted checker or serve the page locally, then tamper the pasted
+example to see a failed check.
 
 ## Quick start: verify, then tamper
 
-*Browser checker:* serve the page and click the tamper example.
+*Hosted checker (no install):* open https://velvetmonkey.github.io/seal-check/
+and paste [`examples/allow.receipt.json`](examples/allow.receipt.json) into
+the paste box, or choose it with "Or open a receipt file". The page checks it
+immediately; there is no "Verify a receipt" button to click.
+
+*Run it locally instead:* the wasm fetch needs `http`, not `file://`, so serve
+the directory rather than opening `index.html` directly:
 
 ```bash
-python3 -m http.server 8000   # then open http://localhost:8000 and hit "Verify a receipt"
+python3 -m http.server 8000   # then open http://localhost:8000 and paste a receipt
 ```
+
+Now tamper it: in the pasted text, change `"verdict": "ALLOW"` to
+`"verdict": "BLOCK"` and re-paste (or re-select the edited file). It FAILS —
+the kernel re-derives `ALLOW` from the receipt's own call and config, so the
+flipped verdict no longer matches.
 
 The page bundles the pinned wasm kernel (sha256 `28bb3ae7…`, re-hashed in your browser against the pinned constant), re-runs it over the exact bytes, and shows the verdict row. Browser deep links are deliberately **UNPINNED**: they verify signature and replay consistency but do not establish operator authority. Nothing leaves the browser.
 
@@ -59,6 +72,17 @@ receipt contains no producer kernel identity, so the page makes no claim to have
 identified or re-run that producer's binary. Authority and event occurrence remain
 unverified. The browser port follows `checker/seal-receipt-v2.mjs` at that commit;
 its JSON scanner additionally accepts ordinary whitespace between object members.
+
+**Number compatibility.** `protect-receipt.js`'s `canonical()` currently
+accepts only finite **safe integers** (`Number.isInteger` and
+`Number.isSafeInteger` both true) for every number in a receipt, including
+inside `arguments`. Seal's own Protect v2 contract
+([`docs/SEAL-RECEIPT-V2.md`](https://github.com/velvetmonkey/seal/blob/main/docs/SEAL-RECEIPT-V2.md)
+in `seal`) accepts finite decimals, negative fractions, and scientific
+notation. A receipt whose arguments the producer and its own checker treat as
+canonical because it contains a decimal number will currently be refused here
+as `number_not_canonical`. Integer-only receipts are unaffected. This is a
+known gap against the current spec, not a bug in the receipt you pasted.
 
 Older `seal.spine/v1` receipts use the existing Spine verifier: signature plus
 decision, tool, arguments and effect bindings. That family does not support kernel
@@ -142,12 +166,16 @@ Mandatory non-claims (canonical copy: [docs/LIMITATIONS.md](docs/LIMITATIONS.md)
 - Seal's audit chain is tamper-EVIDENT, not tamper-IMPOSSIBLE.
 - Seal does NOT make the AI smarter or prevent hallucinations; it stops an unapproved effect.
 - Axiom footprint {propext, Classical.choice, Quot.sound} is the minimal classical fragment; no extra axioms.
-- The axiom-footprint line is a per-theorem ceiling for theorems named in the family's axiom-pin gates; it is not a repository-wide census. Pin scope and named exceptions are indexed in the seal claims matrix (seal/docs/CLAIMS-MATRIX.md).
+- The axiom-footprint line is a per-theorem ceiling for theorems named in the family's axiom-pin gates; it is not a repository-wide census. Pin scope and named exceptions are indexed in the seal claims matrix (seal/docs/archive/CLAIMS-MATRIX.md, historical).
 <!-- claims:end -->
 
 ## Verify in five minutes
 
-Open the page (the wasm fetch needs http, not file://):
+Fastest: open the hosted checker, no install required:
+https://velvetmonkey.github.io/seal-check/
+
+To run it locally instead (the wasm fetch needs `http`, not `file://`, so
+serve the directory rather than opening `index.html` directly):
 
 ```sh
 python3 -m http.server 8000   # then visit http://localhost:8000
