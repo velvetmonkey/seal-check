@@ -17,6 +17,7 @@
 // ============================================================================
 const fs = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("node:url");
 
 let failures = 0;
 function check(name, got, want) {
@@ -28,8 +29,8 @@ const fixture = (f) => JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 (async () => {
-  const F = await import("file://" + path.resolve(__dirname, "..", "receipt-format.js"));
-  const nacl = (await import("file://" + path.resolve(__dirname, "..", "vendor", "nacl.js"))).default;
+  const F = await import(pathToFileURL(path.resolve(__dirname, "..", "receipt-format.js")).href);
+  const nacl = (await import(pathToFileURL(path.resolve(__dirname, "..", "vendor", "nacl.js")).href)).default;
   // The injected primitive: (message, signature, publicKey) -> boolean.
   const ed = (msg, sig, pk) => nacl.sign.detached.verify(msg, sig, pk);
   const V = (r) => F.validateReceipt(r, { ed25519Verify: ed });
