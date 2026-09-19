@@ -4,7 +4,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AK5Bu0f7o4EZTqoUCG9dSjc9tYd2lU86v+uX+vsOKSc='; img-src 'self'; style-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; webrtc 'block'" />
+  <!-- This page does not use WebRTC; connect-src, script-src, and the other CSP directives cover its actual attack surface. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-AK5Bu0f7o4EZTqoUCG9dSjc9tYd2lU86v+uX+vsOKSc='; img-src 'self'; style-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'" />
   <title>seal-check: re-check a seal receipt in your browser</title>
   <meta name="description" content="Paste a seal decision receipt and re-check it in your browser: request re-hashed, verdict re-derived through the verified seal kernel, signature verified. No backend; cross-origin connections are blocked by CSP." />
   <!-- Classic, same-origin script: sets the family's data-theme attribute
@@ -24,7 +25,7 @@
     <div class="header-actions">
       <span class="tip">
         <button type="button" class="tip-btn tip-btn-text" aria-describedby="tip-header-privacy">Runs in your browser <span aria-hidden="true">ⓘ</span></button>
-        <span role="tooltip" id="tip-header-privacy" class="tip-body left" hidden>No backend, no accounts, no telemetry. Cross-origin content and connections are blocked by CSP. Two caveats: Chromium does not enforce the WebRTC-block directive, and top-level navigation (links, window.open, meta refresh) can still carry data in a URL to another site.</span>
+        <span role="tooltip" id="tip-header-privacy" class="tip-body left" hidden>No backend, no accounts, no telemetry. Cross-origin content and connections are blocked by CSP. Two caveats: this policy does not restrict WebRTC (which this page does not use), and top-level navigation (links, window.open, meta refresh) can still carry data in a URL to another site.</span>
       </span>
       <button id="theme-toggle" type="button" class="theme-toggle">Dark mode</button>
     </div>
