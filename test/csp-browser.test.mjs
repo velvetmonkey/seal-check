@@ -76,7 +76,18 @@ test("CSP blocks cross-origin requests, declares WebRTC blocking, and observes e
 
   const boot = await page.locator("#kernel-status").textContent();
   assert.match(boot, /kernel verified/, `same-origin wasm did not load: ${boot}`);
-  assert.equal(await page.locator("#rv-example-label").isVisible(), true, "same-origin example receipt did not load");
+  assert.equal(await page.locator("#paste-input").inputValue(),
+    await readFile(new URL("../examples/allow.receipt.json", import.meta.url), "utf8"),
+    "same-origin example receipt did not load");
+  assert.equal(await page.locator("#rv-example-label").count(), 0, "obsolete example label was constructed");
+  assert.doesNotMatch(await page.locator("body").innerText(), /EXAMPLE RECEIPT/);
+  const inputBox = await page.locator(".input-pane").boundingBox();
+  const bannerBox = await page.locator("#rv-banner").boundingBox();
+  const tableBox = await page.locator("#rv-table").boundingBox();
+  assert.equal(inputBox.width, bannerBox.width, "receipt and verdict must occupy the full content width");
+  assert.ok(bannerBox.y >= inputBox.y + inputBox.height, "verdict must follow the receipt input");
+  assert.ok(tableBox.y >= bannerBox.y + bannerBox.height, "table must follow the verdict");
+  assert.ok(Math.abs(tableBox.width - bannerBox.width) <= 2, "table must fill its bordered wrapper");
   assert.equal(await page.locator("#rv-verdict").textContent(), "ALLOWED");
   assert.equal((await page.locator("#ident-sha").textContent()).trim().length, 64, "wasm hash was not rendered");
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content");

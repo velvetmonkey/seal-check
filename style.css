@@ -242,13 +242,9 @@ footer h3 { margin-bottom: 6px; }
 .rv-bad { color: var(--seal-danger); font-weight: 600; }
 .rv-skip { color: var(--seal-muted); }
 
-/* Two panes: input left, output right at >=900px; stacked input-first below.
-   DOM order is already input-then-output, so no `order:` is used anywhere —
-   a narrow visitor sees the textarea first, never an empty output slot. */
-.rv-panes { display: grid; grid-template-columns: 1fr; gap: 20px 24px; align-items: start; }
-@media (min-width: 900px) {
-  .rv-panes { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
-}
+/* One full-width flow at every viewport: receipt, verdict, then details.
+   Keep the visual order identical to the existing DOM order. */
+.rv-panes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .input-pane textarea#paste-input { min-height: 180px; }
 @media (min-width: 900px) {
   .input-pane textarea#paste-input { min-height: 420px; }
@@ -256,27 +252,31 @@ footer h3 { margin-bottom: 6px; }
 .output-pane { min-width: 0; }
 .safety-note { font-size: 13.5px; margin-top: 6px; }
 
-/* the re-check verdict banner: first thing a receipt-holder sees */
-.rv-banner { border: 1px solid var(--seal-border); border-radius: 8px; padding: 14px 16px; margin: 0 0 8px; background: var(--seal-surface); }
+/* Match the docs callout shape and spacing, with the existing verdict palette. */
+.rv-banner { border-left: 3px solid var(--seal-border); border-radius: 0 var(--seal-radius) var(--seal-radius) 0; padding: 0.85rem 1.1rem; margin: 0 0 8px; background: var(--seal-surface); }
 .rv-banner.ok { background: var(--seal-success-soft); border-color: var(--seal-success); }
-.rv-banner.bad { background: var(--seal-danger-soft); border: 2px solid var(--seal-danger); }
+.rv-banner.bad { background: var(--seal-danger-soft); border-color: var(--seal-danger); }
 .rv-banner.warn { background: var(--seal-warning-soft); border-color: var(--seal-warning); }
 .rv-banner-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.rv-headline { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.15; }
+.rv-headline { font-size: 20px; font-weight: 600; line-height: 1.5; }
 .rv-banner.ok .rv-headline { color: var(--seal-success); }
 .rv-banner.bad .rv-headline { color: var(--seal-danger); }
 .rv-banner.warn .rv-headline { color: var(--seal-warning); }
 .rv-outcome-tag { font-family: var(--mono); font-size: 12px; color: var(--seal-muted); white-space: nowrap; }
 .rv-outcome-tag:empty { display: none; }
-.rv-subline { margin: 6px 0 0; font-size: 14.5px; color: var(--seal-text); max-width: 76ch; display: flex; align-items: flex-start; gap: 4px; }
+.rv-subline { margin: 6px 0 0; font-size: 16px; line-height: 1.75; color: var(--seal-text); max-width: 76ch; display: flex; align-items: flex-start; gap: 4px; }
 .rv-fails { margin: 8px 0 0; padding-left: 1.3em; color: var(--seal-danger); }
 .rv-fails li { padding: 1px 0; font-size: 15px; }
 
-/* the one input: label + textarea on top of the left pane */
+/* The receipt input leads the full-width result flow. */
 #receipt-verify { padding-top: 12px; }
 .paste-label { display: block; font-size: 17px; font-weight: 600; margin: 0 0 6px; }
-#paste-input { margin: 0; font-size: 13.5px; }
-.example-label { margin: 0 0 14px; padding: 8px 12px; border-left: 4px solid var(--seal-warning); background: var(--seal-warning-soft); color: var(--seal-warning); border-radius: 0 var(--seal-radius) var(--seal-radius) 0; font-size: 13.5px; }
+#paste-input {
+  margin: 0;
+  /* Local faces from Starlight’s code stack, ahead of the generic fallback. */
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 15px; font-weight: 400; line-height: 1.6;
+}
 #paste-error:empty { display: none; }
 
 /* One table, two groups (Receipt / Checks). Field · Value · Re-check · ⓘ.
