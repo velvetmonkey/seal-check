@@ -1,4 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
+> Historical draft (July 2026). This statement retains its original integration evidence and availability claims; private evidence mentioned below is not a public reproducibility artifact. For current product scope and public evidence, use the [current evidence index](https://velvetmonkey.github.io/seal/evidence/).
+
 # seal — Assurance statement
 
 | | |
