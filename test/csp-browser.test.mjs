@@ -40,7 +40,7 @@ function startStaticServer() {
   })));
 }
 
-test("CSP blocks cross-origin requests, declares WebRTC blocking, and observes enforcement when available", async (t) => {
+test("CSP loads without diagnostics, blocks cross-origin requests, and observes WebRTC behavior", async (t) => {
   let playwright;
   try {
     playwright = require("playwright");
@@ -59,7 +59,11 @@ test("CSP blocks cross-origin requests, declares WebRTC blocking, and observes e
   const page = await browser.newPage();
   const refusals = [];
   const consoleErrors = [];
+  const cspDiagnostics = [];
   page.on("console", (message) => {
+    if (/Content-Security-Policy|\bCSP\b/i.test(message.text())) {
+      cspDiagnostics.push(message.text());
+    }
     if (message.type() === "error") {
       consoleErrors.push(message.text());
       if (/Refused to connect/.test(message.text())) refusals.push(message.text());
@@ -91,7 +95,10 @@ test("CSP blocks cross-origin requests, declares WebRTC blocking, and observes e
   assert.equal(await page.locator("#rv-verdict").textContent(), "ALLOWED");
   assert.equal((await page.locator("#ident-sha").textContent()).trim().length, 64, "wasm hash was not rendered");
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content");
-  assert.match(csp || "", /(?:^|;\s*)webrtc 'block'(?:\s*;|$)/, "the page no longer declares WebRTC blocking");
+  assert.ok(csp, "the page must declare a CSP");
+  assert.doesNotMatch(csp, /(?:^|;)\s*webrtc(?:\s|$)/i, "the page must not declare the unsupported WebRTC directive");
+  assert.deepEqual(cspDiagnostics, [], "page load emitted CSP diagnostics");
+  console.log(`Page-load CSP diagnostics: ${JSON.stringify(cspDiagnostics)}`);
 
   const result = await page.evaluate(async () => {
     try {
