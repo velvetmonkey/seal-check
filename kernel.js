@@ -38,8 +38,14 @@ let _modPromise = null;
 let _kernelBytesPromise = null;
 export function kernelBytes() {
   if (!_kernelBytesPromise) {
-    _kernelBytesPromise = (async () =>
-      new Uint8Array(await (await fetch(WASM_URL)).arrayBuffer()))();
+    _kernelBytesPromise = (async () => {
+      const response = await fetch(WASM_URL);
+      if (!response.ok) throw new Error(`kernel fetch failed: HTTP ${response.status}`);
+      return new Uint8Array(await response.arrayBuffer());
+    })().catch((error) => {
+      _kernelBytesPromise = null;
+      throw error;
+    });
   }
   return _kernelBytesPromise;
 }
@@ -51,7 +57,10 @@ function mod() {
       }
       // Pass a copy so emscripten can never detach the buffer verifyKernelSha hashes.
       return window.SealModule({ wasmBinary: (await kernelBytes()).slice(), print: () => {}, printErr: () => {} });
-    })();
+    })().catch((error) => {
+      _modPromise = null;
+      throw error;
+    });
   }
   return _modPromise;
 }

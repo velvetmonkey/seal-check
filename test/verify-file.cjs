@@ -45,7 +45,7 @@ globalThis.__dirname = path.join(ROOT, "wasm");
 globalThis.window = globalThis;
 globalThis.fetch = async (p) => {
   const buf = fs.readFileSync(path.join(ROOT, p));
-  return { arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
+  return { ok: true, arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
 };
 
 (async () => {
