@@ -102,11 +102,27 @@ function auditRequestHash(emittedBytes) {
   }
 }
 
+// A receipt link may carry at most 1 MiB of UTF-8 bytes. The largest shipped
+// fixture is under 8 KiB; this leaves ample headroom while bounding paste decode.
+export const MAX_RECEIPT_DECODED_BYTES = 1024 * 1024;
+
 export function b64urlToStr(s) {
+  // Count payload characters without copying the input. Check before atob,
+  // alphabet conversion, or allocation of the decoded byte buffer.
+  const padding = s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0;
+  const decodedLength = Math.floor((s.length - padding) * 3 / 4);
+  if (decodedLength > MAX_RECEIPT_DECODED_BYTES)
+    throw new Error(`receipt payload exceeds ${MAX_RECEIPT_DECODED_BYTES} decoded bytes`);
+  if (!/^[A-Za-z0-9_-]*={0,2}$/.test(s) || s.length % 4 === 1)
+    throw new Error("receipt payload is not valid base64url");
   s = s.replace(/-/g, "+").replace(/_/g, "/");
   while (s.length % 4) s += "=";
   const bytes = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    throw new Error("receipt payload is not valid UTF-8", { cause: error });
+  }
 }
 
 // Human summary of the call a receipt mediated. Recognizes the seal-live-demo

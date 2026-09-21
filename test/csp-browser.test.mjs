@@ -185,3 +185,38 @@ test("paste and both file inputs preserve embedded-link receipts through checkPa
   await page.locator("#paste-input").fill("#receipt=a");
   await page.waitForFunction(() => document.getElementById("rv-summary").textContent.includes("could not decode"));
 });
+
+test("invalid UTF-8 and oversized receipt links visibly refuse in fragment and paste UI", async (t) => {
+  const { chromium } = require("playwright");
+  const { server, url } = await startStaticServer();
+  t.after(() => server.close());
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.CHROME_FOR_TESTING || undefined,
+  });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(url);
+  await page.waitForFunction(() => document.querySelector("#rv-summary")?.textContent.length > 0);
+  for (const [bytes, message] of [
+    [Buffer.from([0xc3, 0x28]), "not valid UTF-8"],
+    [Buffer.alloc(1048577, 97), "exceeds 1048576 decoded bytes"],
+  ]) {
+    const fragment = "#receipt=" + bytes.toString("base64url");
+    await page.evaluate(hash => { location.hash = hash; }, fragment);
+    await page.waitForFunction(message => document.querySelector("#rv-summary").textContent.includes(message), message);
+    assert.equal(await page.locator("#rv-result").isVisible(), true);
+    assert.equal(await page.locator("#rv-summary").isVisible(), true);
+    // Clear the fragment refusal so the same text cannot satisfy the paste wait.
+    await page.locator("#paste-input").fill(" ");
+    await page.waitForFunction(() => document.querySelector("#rv-summary").textContent.includes("empty document"));
+    await page.locator("#paste-input").fill(fragment);
+    await page.waitForFunction(message => document.querySelector("#rv-summary").textContent.includes(message), message);
+    assert.equal(await page.locator("#rv-result").isVisible(), true);
+    assert.equal(await page.locator("#rv-summary").isVisible(), true);
+    console.log(`PASS fragment and paste visible refusal: ${message}`);
+  }
+  assert.deepEqual(errors, [], "no uncaught page exceptions");
+});

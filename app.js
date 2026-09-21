@@ -3,7 +3,7 @@
 import {
   ready, verifyKernelSha,
 } from "./kernel.js";
-import { b64urlToStr, verifyReceipt, callSummary } from "./receipt.js";
+import { verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
 import { classifyReceiptFragment } from "./fragment-classifier.js";
 import { renderPageClaims } from "./page-claims.js";
@@ -646,15 +646,6 @@ async function renderSignedFamilyReceipt(text, receipt, family, { isCurrent, scr
 // blob. Everything is reduced to the received DOCUMENT TEXT before it reaches
 // verifyReceipt — never a pre-parsed object — so a pasted receipt gets the
 // same §12.6 document-level scrutiny as a deep-linked one.
-function pastedDocumentText(raw) {
-  const text = raw.trim();
-  if (!text) return null;
-  const link = text.match(/#receipt=([A-Za-z0-9_-]+=*)/);
-  if (link) return b64urlToStr(link[1]);
-  if (/^[A-Za-z0-9_-]{8,}=*$/.test(text)) return b64urlToStr(text);
-  return text;
-}
-
 let pasteTimer = null;
 function onPasteInput() {
   // Invalidate fragment/example renders as soon as the visitor edits the box,
