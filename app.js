@@ -705,6 +705,13 @@ function init() {
         if (!file) return;
         const version = ++locationRenderVersion;
         clearTimeout(pasteTimer);
+        // The largest checked-in receipt fixture is under 8 KiB; 1 MiB leaves
+        // ample room for real receipts without reading unbounded file content.
+        const maxFileBytes = 1024 * 1024;
+        if (file.size > maxFileBytes) {
+          showReceiptError(`File could not be read: exceeds the 1 MiB (${maxFileBytes} bytes) limit; selected file is ${file.size} bytes.`);
+          return;
+        }
         try {
           const text = await file.text();
           if (version !== locationRenderVersion) return;
