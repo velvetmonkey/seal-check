@@ -712,6 +712,8 @@ function init() {
           await checkPasted(version);
         } catch (error) {
           if (version === locationRenderVersion) showReceiptError("File could not be read: " + error.message);
+        } finally {
+          event.target.value = "";
         }
       });
     }
