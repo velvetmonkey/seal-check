@@ -13,6 +13,20 @@ jobs:
           node-version: '22'
       - run: node --check app.js
       - run: node --check receipt.js
+      - run: node --check corpus.js
+      - run: node --check fragment-classifier.js
+      - run: node --check kernel.js
+      - run: node --check legacy-tools-redirect.js
+      - run: node --check page-claims.js
+      - run: node --check protect-receipt.js
+      - run: node --check receipt-format.js
+      - run: node --check receipt-input.js
+      - run: node --check receipt-summary.js
+      - run: node --check seal-config.js
+      - run: node --check seal-wasm.js
+      - run: node --check spine-receipt.js
+      - run: node --check theme.js
+      - run: node --check tooltip.js
       - run: node test/receipt-format.test.cjs
       - run: node test/receipt-harness.cjs
       - run: node test/cross-receipt.test.cjs
