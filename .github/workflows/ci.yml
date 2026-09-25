@@ -11,22 +11,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check app.js
-      - run: node --check receipt.js
-      - run: node --check corpus.js
-      - run: node --check fragment-classifier.js
-      - run: node --check kernel.js
-      - run: node --check legacy-tools-redirect.js
-      - run: node --check page-claims.js
-      - run: node --check protect-receipt.js
-      - run: node --check receipt-format.js
-      - run: node --check receipt-input.js
-      - run: node --check receipt-summary.js
-      - run: node --check seal-config.js
-      - run: node --check seal-wasm.js
-      - run: node --check spine-receipt.js
+      - run: node --input-type=module --check < app.js
+      - run: node --input-type=module --check < receipt.js
+      - run: node --input-type=module --check < corpus.js
+      - run: node --input-type=module --check < fragment-classifier.js
+      - run: node --input-type=module --check < kernel.js
+      - run: node --input-type=module --check < legacy-tools-redirect.js
+      - run: node --input-type=module --check < page-claims.js
+      - run: node --input-type=module --check < protect-receipt.js
+      - run: node --input-type=module --check < receipt-format.js
+      - run: node --input-type=module --check < receipt-input.js
+      - run: node --input-type=module --check < receipt-summary.js
+      - run: node --input-type=module --check < seal-config.js
+      - run: node --input-type=module --check < seal-wasm.js
+      - run: node --input-type=module --check < spine-receipt.js
       - run: node --check theme.js
-      - run: node --check tooltip.js
+      - run: node --input-type=module --check < tooltip.js
       - run: node test/receipt-format.test.cjs
       - run: node test/receipt-harness.cjs
       - run: node test/cross-receipt.test.cjs
