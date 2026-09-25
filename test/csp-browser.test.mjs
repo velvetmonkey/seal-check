@@ -185,3 +185,57 @@ test("paste and both file inputs preserve embedded-link receipts through checkPa
   await page.locator("#paste-input").fill("#receipt=a");
   await page.waitForFunction(() => document.getElementById("rv-summary").textContent.includes("could not decode"));
 });
+
+test("file inputs clear after successful and failed reads so the same file can be selected again", async (t) => {
+  const playwright = require("playwright");
+  const { server, url } = await startStaticServer();
+  t.after(() => server.close());
+  const browser = await playwright.chromium.launch({ headless: true, executablePath: process.env.CHROME_FOR_TESTING || undefined });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(url);
+  await page.waitForFunction(() => document.getElementById("rv-verdict").textContent === "ALLOWED");
+
+  for (const [inputId, textId] of [["receipt-file", "paste-input"], ["signer-file", "signer-key"]]) {
+    const result = await page.evaluate(async ({ inputId, textId }) => {
+      const input = document.getElementById(inputId);
+      const textarea = document.getElementById(textId);
+      const file = new File(["  repeated content  "], "same-file.txt", { type: "text/plain" });
+      let changes = 0;
+      input.addEventListener("change", () => { changes++; });
+      const select = () => {
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      select();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const first = { value: input.value, text: textarea.value, changes };
+      textarea.value = "";
+      select();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const second = { value: input.value, text: textarea.value, changes };
+      const failedFile = new File(["bad"], "failed-file.txt", { type: "text/plain" });
+      const originalText = File.prototype.text;
+      File.prototype.text = async function () {
+        if (this.name === "failed-file.txt") throw new Error("read failed");
+        return originalText.call(this);
+      };
+      const transfer = new DataTransfer();
+      transfer.items.add(failedFile);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      File.prototype.text = originalText;
+      return { first, second, failureValue: input.value, failureMessage: document.getElementById("rv-summary").textContent };
+    }, { inputId, textId });
+    assert.equal(result.first.text, "repeated content", `${inputId}: first selection populates text`);
+    assert.equal(result.first.value, "", `${inputId}: successful read clears file input`);
+    assert.equal(result.second.text, "repeated content", `${inputId}: same File can populate text again`);
+    assert.equal(result.second.changes, 2, `${inputId}: second selection fires change`);
+    assert.equal(result.second.value, "", `${inputId}: second read clears file input`);
+    assert.equal(result.failureValue, "", `${inputId}: failed read clears file input`);
+    assert.match(result.failureMessage, /File could not be read: read failed/, `${inputId}: failed read reports the error`);
+  }
+});
