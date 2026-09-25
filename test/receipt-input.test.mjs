@@ -131,7 +131,7 @@ test("shared decoder bounds decoded bytes before atob, including padded inputs",
         const classified = classifyReceiptFragment(fragment);
         assert.equal(classified.kind, "unparseable");
         assert.match(classified.error, /exceeds 1048576 decoded bytes/);
-        for (const input of [fragment]) {
+        for (const input of [encoded, fragment]) {
           const result = pastedReceiptDocumentOrError(input);
           assert.equal(result.ok, false);
           assert.match(result.error, /exceeds 1048576 decoded bytes/);
@@ -140,17 +140,6 @@ test("shared decoder bounds decoded bytes before atob, including padded inputs",
     }
     assert.equal(called, false);
   } finally { globalThis.atob = atob; }
-  // Master's bare-token rule inspects decoded leading bytes before deciding
-  // whether to treat the token as a receipt; exercise that path with atob live.
-  for (const size of [MAX_RECEIPT_DECODED_BYTES + 1, MAX_RECEIPT_DECODED_BYTES + 2, MAX_RECEIPT_DECODED_BYTES + 3]) {
-    const bytes = Buffer.alloc(size, 97);
-    bytes[0] = 123; // {
-    for (const encoding of ["base64url", "base64"]) {
-      const result = pastedReceiptDocumentOrError(bytes.toString(encoding));
-      assert.equal(result.ok, false);
-      assert.match(result.error, /exceeds 1048576 decoded bytes/);
-    }
-  }
   const unicode = "é".repeat(MAX_RECEIPT_DECODED_BYTES / 2);
   assert.equal(b64urlToStr(Buffer.from(unicode).toString("base64url")), unicode);
   assert.throws(() => b64urlToStr(Buffer.from(unicode + "é").toString("base64url")), /exceeds/);
