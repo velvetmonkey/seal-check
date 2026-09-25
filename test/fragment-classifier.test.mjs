@@ -22,6 +22,42 @@ assert.equal(kind("#receipt=" + encoded('{"hello":"world"}')), "wrong-shape");
 const validReceipt = fs.readFileSync(path.join(ROOT, "examples", "allow.receipt.json"), "utf8");
 assert.equal(kind("#receipt=" + encoded(validReceipt)), "valid-receipt");
 
+// The encoded ceiling is inclusive, and an oversized value must be refused
+// before either base64 or UTF-8 decoding begins.
+const cap = 131_072;
+const originalAtob = globalThis.atob;
+const OriginalTextDecoder = globalThis.TextDecoder;
+let atobCalls = 0;
+let decoderCalls = 0;
+try {
+  globalThis.atob = (...args) => {
+    atobCalls += 1;
+    return originalAtob(...args);
+  };
+  globalThis.TextDecoder = class extends OriginalTextDecoder {
+    constructor(...args) {
+      decoderCalls += 1;
+      super(...args);
+    }
+  };
+  const oversized = classifyReceiptFragment("#receipt=" + "A".repeat(cap + 4));
+  assert.equal(oversized.kind, "unparseable");
+  assert.match(oversized.error, /131072 encoded characters/);
+  assert.equal(atobCalls, 0);
+  assert.equal(decoderCalls, 0);
+
+  const document = validReceipt + " ".repeat(cap * 3 / 4 - Buffer.byteLength(validReceipt));
+  assert.equal(encoded(document).length, cap);
+  const boundary = classifyReceiptFragment("#receipt=" + encoded(document));
+  assert.equal(boundary.kind, "valid-receipt");
+  assert.equal(boundary.document, document);
+  assert.equal(atobCalls, 1);
+  assert.equal(decoderCalls, 1);
+} finally {
+  globalThis.atob = originalAtob;
+  globalThis.TextDecoder = OriginalTextDecoder;
+}
+
 const allKinds = new Set([
   "absent", "empty", "whitespace-only", "unparseable", "wrong-shape", "valid-receipt",
 ]);

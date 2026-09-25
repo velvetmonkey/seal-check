@@ -13,8 +13,16 @@ function valueOrAbsent(receipt, field) {
   return present(receipt, field) ? String(receipt[field]) : "absent";
 }
 
+const READABLE_JSON_LIMIT = 500;
+
 function readableJson(value) {
-  try { return JSON.stringify(value); }
+  try {
+    const json = JSON.stringify(value);
+    if (typeof json !== "string") return json;
+    return json.length > READABLE_JSON_LIMIT
+      ? `${json.slice(0, READABLE_JSON_LIMIT)}… (truncated; ${json.length} characters total)`
+      : json;
+  }
   catch { return "unrenderable value"; }
 }
 

@@ -5,7 +5,13 @@
 // five explicit visitor states below.
 import { classifyReceiptDocument } from "./receipt-format.js";
 
+// 128 KiB of encoded receipt text is over 12 times the largest checked-in
+// receipt fixture (7,605 bytes, about 10 KiB as base64url).
+const MAX_ENCODED_RECEIPT_LENGTH = 128 * 1024;
+
 function decodeBase64url(value) {
+  if (value.length > MAX_ENCODED_RECEIPT_LENGTH)
+    throw new Error(`receipt payload exceeds ${MAX_ENCODED_RECEIPT_LENGTH} encoded characters (got ${value.length})`);
   if (!/^[A-Za-z0-9_-]*={0,2}$/.test(value) || value.length % 4 === 1)
     throw new Error("receipt payload is not valid base64url");
   let encoded = value.replace(/-/g, "+").replace(/_/g, "/");
