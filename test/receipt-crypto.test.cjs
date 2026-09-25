@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -9,7 +10,7 @@ const fixture = JSON.parse(fs.readFileSync(
   path.join(__dirname, "fixtures", "unparseable-block.receipt.json"), "utf8"));
 
 test("decision receipt: absent WebCrypto uses a real Ed25519 fallback", async () => {
-  const { verifyConfigSignature } = await import("file://" + path.join(ROOT, "receipt.js"));
+  const { verifyConfigSignature } = await import(pathToFileURL(path.join(ROOT, "receipt.js")).href);
   const result = await verifyConfigSignature(fixture.signed_config, { webcrypto: null });
   assert.deepEqual(result, {
     ok: true, code: "verified", verifier: "tweetnacl",
@@ -23,7 +24,7 @@ test("decision receipt: absent WebCrypto uses a real Ed25519 fallback", async ()
 });
 
 test("decision receipt: a genuinely bad signature is signature_invalid", async () => {
-  const { verifyConfigSignature } = await import("file://" + path.join(ROOT, "receipt.js"));
+  const { verifyConfigSignature } = await import(pathToFileURL(path.join(ROOT, "receipt.js")).href);
   const bad = { ...fixture.signed_config, signature:
     (fixture.signed_config.signature[0] === "0" ? "1" : "0") + fixture.signed_config.signature.slice(1) };
   const result = await verifyConfigSignature(bad);
@@ -34,7 +35,7 @@ test("decision receipt: a genuinely bad signature is signature_invalid", async (
 });
 
 test("decision receipt: unsupported WebCrypto Ed25519 uses the same real fallback", async () => {
-  const { verifyConfigSignature } = await import("file://" + path.join(ROOT, "receipt.js"));
+  const { verifyConfigSignature } = await import(pathToFileURL(path.join(ROOT, "receipt.js")).href);
   const webcrypto = { subtle: {
     importKey: async () => { throw new DOMException("Unrecognized algorithm", "NotSupportedError"); },
   } };

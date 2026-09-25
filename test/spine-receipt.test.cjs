@@ -4,6 +4,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -11,8 +12,8 @@ const fixture = (name) => JSON.parse(fs.readFileSync(path.join(ROOT, "examples",
 const key = fs.readFileSync(path.join(ROOT, "examples", "spine-signer.pub"), "utf8").trim();
 
 (async () => {
-  const { checkSpineReceipt } = await import("file://" + path.join(ROOT, "spine-receipt.js"));
-  const { receiptFamily, classifyReceiptDocument } = await import("file://" + path.join(ROOT, "receipt-format.js"));
+  const { checkSpineReceipt } = await import(pathToFileURL(path.join(ROOT, "spine-receipt.js")).href);
+  const { receiptFamily, classifyReceiptDocument } = await import(pathToFileURL(path.join(ROOT, "receipt-format.js")).href);
 
   test("genuine signed demo receipt ACCEPTS all five checks", async () => {
     const result = await checkSpineReceipt(fixture("spine-allow.receipt.json"), key);
@@ -77,3 +78,14 @@ const key = fs.readFileSync(path.join(ROOT, "examples", "spine-signer.pub"), "ut
     });
   });
 })().catch((error) => { console.error(error); process.exitCode = 1; });
+
+test("Protect canonical numbers accept finite fractions and retain non-finite refusals", async () => {
+  const { canonical } = await import(pathToFileURL(path.join(ROOT, "protect-receipt.js")).href);
+  for (const value of [1.5, -0.125, 1e-7, 0, -0, 42, Number.MAX_SAFE_INTEGER]) {
+    const nested = { values: [value] };
+    assert.equal(canonical(nested), JSON.stringify(nested));
+  }
+  for (const value of [NaN, Infinity, -Infinity]) {
+    assert.throws(() => canonical({ values: [value] }), { code: "number_not_canonical" });
+  }
+});

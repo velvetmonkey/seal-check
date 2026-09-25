@@ -9,6 +9,7 @@
 // Run:  node test/receipt-format.test.cjs
 // ============================================================================
 const path = require("path");
+const { pathToFileURL } = require("node:url");
 
 let failures = 0;
 function check(name, got, want) {
@@ -18,7 +19,7 @@ function check(name, got, want) {
 }
 
 (async () => {
-  const F = await import("file://" + path.resolve(__dirname, "..", "receipt-format.js"));
+  const F = await import(pathToFileURL(path.resolve(__dirname, "..", "receipt-format.js")).href);
 
   // --- sanity: pure-JS sha256 against the NIST empty-string digest
   check("sha256Hex(\"\")",

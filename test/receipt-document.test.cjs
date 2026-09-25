@@ -26,6 +26,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { pathToFileURL } = require("node:url");
 const { execFileSync } = require("child_process");
 
 let failures = 0;
@@ -37,8 +38,8 @@ function check(name, got, want) {
 const text = (f) => fs.readFileSync(path.join(__dirname, "fixtures", f), "utf8");
 
 (async () => {
-  const F = await import("file://" + path.resolve(__dirname, "..", "receipt-format.js"));
-  const nacl = (await import("file://" + path.resolve(__dirname, "..", "vendor", "nacl.js"))).default;
+  const F = await import(pathToFileURL(path.resolve(__dirname, "..", "receipt-format.js")).href);
+  const nacl = (await import(pathToFileURL(path.resolve(__dirname, "..", "vendor", "nacl.js")).href)).default;
   const ed = (msg, sig, pk) => nacl.sign.detached.verify(msg, sig, pk);
   const V = (doc, oracle = ed) => F.validateReceipt(doc, { ed25519Verify: oracle });
   const edFalse = () => false;

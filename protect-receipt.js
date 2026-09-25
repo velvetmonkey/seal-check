@@ -19,7 +19,7 @@ const fail = (message, code = "invalid_receipt") => { const e = new Error(messag
 export function canonical(value) {
   if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value) || !Number.isSafeInteger(value)) fail("number is not a finite safe integer", "number_not_canonical");
+    if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) fail("number is not finite or exceeds the safe canonical range", "number_not_canonical");
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
