@@ -7,6 +7,9 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const USAGE = `usage: node test/verify-file.cjs <receipt.json> [--expected-config-pubkey <64-hex>]
 
+For Protect v2 and Spine, the supplied key checks the receipt signature. These
+formats do not establish operator authority, so a valid receipt exits 3.
+
 exit codes:
   0  AUTHORISED (signature + replay valid; supplied operator pin matches)
   1  verification, binding, replay, or signer failure
@@ -52,7 +55,40 @@ globalThis.fetch = async (p) => {
   const R = await import(path.join(ROOT, "receipt.js"));
   const F = await import(path.join(ROOT, "receipt-format.js"));
   const source = fs.readFileSync(receiptPath, "utf8");
-  const receipt = JSON.parse(source);
+  const classified = F.classifyReceiptDocument(source);
+  if (classified.family !== "decision" && classified.family !== "spine") {
+    console.error(`FAIL receipt refused: ${classified.errors?.join("; ") || classified.family}`);
+    process.exit(1);
+  }
+  const receipt = classified.record;
+  const protect = classified.family === "decision" && receipt.seal_receipt === "v2" &&
+    ("kernel_inputs" in receipt || "replay" in receipt);
+  if (protect) {
+    const P = await import(path.join(ROOT, "protect-receipt.js"));
+    try {
+      const result = await P.verify(source, { publicKeyHex: expectedConfigPubkey });
+      console.log(P.format(result));
+      if (result.validate && result.signature && result.replay) {
+        console.log(`AUTHENTIC + REPLAY-CONSISTENT, authority NOT established ${receiptPath}`);
+        process.exit(3);
+      }
+      console.error(`FAIL NOT VERIFIED ${receiptPath}`);
+      process.exit(1);
+    } catch (error) {
+      console.error(`FAIL ${error.code || "verification_error"}: ${error.message}`);
+      process.exit(1);
+    }
+  }
+  if (classified.family === "spine") {
+    const { checkSpineReceipt } = await import(path.join(ROOT, "spine-receipt.js"));
+    const result = await checkSpineReceipt(receipt, expectedConfigPubkey);
+    if (result.accepted) {
+      console.log(`AUTHENTIC, authority NOT established ${receiptPath}`);
+      process.exit(3);
+    }
+    console.error(`FAIL ${result.code}: ${result.reason}`);
+    process.exit(1);
+  }
   const roundtrip = JSON.stringify(F.assembleReceiptV2(receipt), null, 2) + "\n";
   if (roundtrip !== source) {
     console.error(`FAIL non-canonical receipt serialization ${receiptPath}`);
