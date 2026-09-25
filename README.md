@@ -41,6 +41,8 @@ example to see a failed check.
 
 ## Quick start: verify, then tamper
 
+`npm test` runs the same checks as CI.
+
 *Hosted checker (no install):* open https://velvetmonkey.github.io/seal-check/
 and paste [`examples/allow.receipt.json`](examples/allow.receipt.json) into
 the paste box, or choose it with "Or open a receipt file". The page checks it
