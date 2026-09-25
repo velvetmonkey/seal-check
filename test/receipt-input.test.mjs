@@ -21,6 +21,22 @@ test("pasted helper decodes base64url receipt links and raw blobs", () => {
   );
 });
 
+test("bare encoded receipt fixtures decode without changing their document bytes", async () => {
+  const { readFileSync } = await import("node:fs");
+  for (const fixture of ["host-v2-block.receipt.json", "host-v3-block.receipt.json", "unparseable-block.receipt.json"]) {
+    const document = readFileSync(new URL(`fixtures/${fixture}`, import.meta.url), "utf8");
+    const encoded = Buffer.from(document, "utf8").toString("base64url");
+    assert.deepEqual(pastedReceiptDocumentOrError(encoded), { ok: true, document }, fixture);
+    assert.deepEqual(pastedReceiptDocumentOrError(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=")), { ok: true, document }, `${fixture} padded`);
+  }
+});
+
+test("bare identifiers remain literal pasted text", () => {
+  for (const document of ["TestCase123", "smrgadeltacodec", "0123456789abcdef0123456789abcdef", "abcdefgh"]) {
+    assert.deepEqual(pastedReceiptDocumentOrError(document), { ok: true, document });
+  }
+});
+
 test("raw JSON containing a receipt URL preserves the entire original document", () => {
   const raw = '  {"tool":"fetch","arguments":{"url":"https://example.invalid/#receipt=eyJmb28iOiJiYXIifQ"}}\n';
   assert.deepEqual(pastedReceiptDocumentOrError(raw), { ok: true, document: raw });
