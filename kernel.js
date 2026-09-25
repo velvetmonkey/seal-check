@@ -41,7 +41,12 @@ export function kernelBytes() {
     _kernelBytesPromise = (async () => {
       const response = await fetch(WASM_URL);
       if (!response.ok) throw new Error(`kernel fetch failed: HTTP ${response.status}`);
-      return new Uint8Array(await response.arrayBuffer());
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length < 8 || bytes[0] !== 0 || bytes[1] !== 97 || bytes[2] !== 115 || bytes[3] !== 109 ||
+          bytes[4] !== 1 || bytes[5] !== 0 || bytes[6] !== 0 || bytes[7] !== 0) {
+        throw new Error("invalid kernel wasm header");
+      }
+      return bytes;
     })().catch((error) => {
       _kernelBytesPromise = null;
       throw error;

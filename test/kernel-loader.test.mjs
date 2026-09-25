@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 let instance = 0;
 const freshKernel = () => import(new URL(`../kernel.js?loader-test=${++instance}`, import.meta.url));
-const bytes = new Uint8Array([0, 97, 115, 109]);
+const bytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
 const response = () => ({ ok: true, status: 200, arrayBuffer: async () => bytes.slice().buffer });
 function browser(t, fetch, SealModule = async () => ({})) {
   t.mock.method(globalThis, 'fetch', fetch);
@@ -16,6 +16,29 @@ function browser(t, fetch, SealModule = async () => ({})) {
     else delete globalThis.window;
   });
 }
+
+test('HTTP 200 non-wasm body is rejected, then a real wasm fetch initializes once', async (t) => {
+  const html = new TextEncoder().encode('<html>bad gateway</html>');
+  let fetches = 0, inits = 0;
+  browser(t, async () => {
+    const body = ++fetches === 1 ? html : bytes;
+    return { ok: true, status: 200, arrayBuffer: async () => body.slice().buffer };
+  }, async ({ wasmBinary }) => {
+    inits++;
+    assert.deepEqual(wasmBinary, bytes);
+    return {};
+  });
+  const K = await freshKernel();
+  await assert.rejects(K.ready(), /invalid kernel wasm header/);
+  assert.equal(inits, 0);
+  assert.equal(await K.ready(), true);
+  assert.equal(fetches, 2);
+  assert.equal(inits, 1);
+  assert.deepEqual(await K.kernelBytes(), bytes);
+  assert.equal(await K.ready(), true);
+  assert.equal(fetches, 2);
+  assert.equal(inits, 1);
+});
 
 for (const status of [404, 500]) {
   test(`#13: HTTP ${status} rejects without reading the body, then retries`, async (t) => {
