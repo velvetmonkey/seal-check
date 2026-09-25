@@ -241,6 +241,8 @@ function showReceiptError(msg, focus = true) {
   if (focus) focusReceiptMode();
   $("rv-result").classList.remove("hidden");
   paintBanner("bad", "This receipt could not be read", msg);
+  $("rv-verdict").textContent = "ERROR";
+  $("rv-verdict").className = "verdict v-error";
   $("rv-table").classList.add("hidden");
   const s = $("rv-summary"); s.textContent = msg; s.className = "reason bad";
   $("rv-tech").open = true;
@@ -458,15 +460,15 @@ async function renderVerifiedReceipt(input, {
     ? receipt.signed_config.pubkey.slice(0, 12) + "…" : "an unknown key";
   if (r.outcome === "authorised") {
     paintBanner("ok", "This receipt checks out",
-      "Intact, replayed byte for byte on this device, signed by the pinned operator key.",
+      "The checked receipt content is unmodified, and replay produced the same bytes. The signing key matches the configured operator key.",
       null, { outcome: r.outcome, tooltip: "Re-checked on your device just now: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and it is signed by the pinned operator key." });
   } else if (r.outcome === "authorised-unparseable") {
     paintBanner("warn", "Signed and intact — but only partly re-checkable",
-      "Pinned key, intact, but the request line could not be re-parsed, so the decision was not independently re-run.",
+      "The checked receipt content is unmodified and the signing key matches the configured operator key. The request could not be read, so the decision was not independently repeated.",
       null, { outcome: r.outcome, tooltip: "The signature is valid (pinned operator key) and everything the receipt carries verifies, but the original request line could not be re-parsed, so this page could not independently re-run the decision. The verdict rests on the kernel material the receipt carries, not on an independent replay." });
   } else if (r.outcome === "unpinned") {
-    paintBanner("warn", "Intact — but the signer is not verified",
-      `Every content check passed. Who holds key ${pub12} is not established here — confirm it out-of-band.`,
+    paintBanner("warn", "Content checks passed; signer identity not confirmed",
+      `The checked receipt content is unmodified: all content checks passed. Who signed it is not confirmed here. Confirm key ${pub12} with your operator through a separate, trusted source.`,
       null, { outcome: r.outcome, tooltip: `Every content check passed: the request matches its fingerprint, the same verified kernel re-derives the same decision byte for byte, and the signature is valid. What this page cannot establish is who holds the signing key (${pub12}) — no operator key is pinned in this deployment, so confirm that key out-of-band before treating this as your operator's receipt.` });
   } else if (r.outcome === "unverified-document") {
     paintBanner("warn", "All local checks passed — but this is not a verified document",
