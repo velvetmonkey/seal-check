@@ -44,6 +44,30 @@ function joinedText(receipt) {
   return receiptSummaryEntries(receipt).map((entry) => entry.text).join("\n");
 }
 
+function assertBoundedJson(text, prefix, value) {
+  const json = JSON.stringify(value);
+  const marker = `… (truncated; ${json.length} characters total)`;
+  assert.ok(json.length > 500);
+  assert.ok(text.startsWith(prefix));
+  assert.ok(text.includes(marker));
+  const preview = text.slice(prefix.length, text.indexOf(marker));
+  assert.equal(preview.length, 500);
+  assert.equal(preview, json.slice(0, 500));
+  assert.ok(!text.includes(json));
+}
+
+test("long now JSON stays bounded and announces truncation", () => {
+  const now = "n".repeat(900);
+  const entry = receiptSummaryEntries({ now }).find((item) => item.label === "Time base");
+  assertBoundedJson(entry.text, "now is ", now);
+});
+
+test("long arguments JSON stays bounded and announces truncation", () => {
+  const args = { payload: "a".repeat(900) };
+  const entry = receiptSummaryEntries({ tool: "x", arguments: args }).find((item) => item.label === "What was asked");
+  assertBoundedJson(entry.text, "The receipt says the tool was x with arguments ", args);
+});
+
 test("defect 1: split decision is explained without a conflict", () => {
   const text = joinedText({
     tool: "db.execute",
