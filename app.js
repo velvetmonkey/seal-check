@@ -19,6 +19,9 @@ const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls)
 let SHA = null;       // {computed, pinned, match}
 let LOCKED = false;   // true if kernel mismatch — refuse to emit receipts
 const BUNDLED_EXAMPLE_RECEIPT = new URL("examples/allow.receipt.json", import.meta.url);
+// 1 MiB leaves ample room for the largest receipt fixture (7,605 bytes).
+const MAX_RECEIPT_INPUT_BYTES = 1024 * 1024;
+const INPUT_SIZE_ERROR = `Input refused: exceeds the ${MAX_RECEIPT_INPUT_BYTES} bytes limit (1 MiB).`;
 
 // --- kernel boot + self-verification ----------------------------------------
 async function boot() {
@@ -671,7 +674,12 @@ async function checkPasted(version = ++locationRenderVersion) {
   if (!isCurrent()) return;
   paintReceiptState();
   $("paste-error").textContent = "";
-  const decoded = pastedReceiptDocumentOrError($("paste-input").value);
+  const raw = $("paste-input").value;
+  // UTF-8 can use more bytes than JS code units. The cheap first check also
+  // avoids allocating an encoded copy of an arbitrarily large pasted value.
+  if (raw.length > MAX_RECEIPT_INPUT_BYTES || new TextEncoder().encode(raw).byteLength > MAX_RECEIPT_INPUT_BYTES)
+    return showReceiptError(INPUT_SIZE_ERROR);
+  const decoded = pastedReceiptDocumentOrError(raw);
   if (!decoded.ok) return showReceiptError(decoded.error);
   if (LOCKED) {
     if (isCurrent()) $("paste-error").textContent = "kernel not verified — refusing to check receipts.";
@@ -706,6 +714,7 @@ function init() {
         const version = ++locationRenderVersion;
         clearTimeout(pasteTimer);
         try {
+          if (file.size > MAX_RECEIPT_INPUT_BYTES) return showReceiptError(INPUT_SIZE_ERROR);
           const text = await file.text();
           if (version !== locationRenderVersion) return;
           $(textId).value = text.trim();
