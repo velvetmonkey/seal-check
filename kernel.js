@@ -38,8 +38,19 @@ let _modPromise = null;
 let _kernelBytesPromise = null;
 export function kernelBytes() {
   if (!_kernelBytesPromise) {
-    _kernelBytesPromise = (async () =>
-      new Uint8Array(await (await fetch(WASM_URL)).arrayBuffer()))();
+    _kernelBytesPromise = (async () => {
+      const response = await fetch(WASM_URL);
+      if (!response.ok) throw new Error(`kernel fetch failed: HTTP ${response.status}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length < 8 || bytes[0] !== 0 || bytes[1] !== 97 || bytes[2] !== 115 || bytes[3] !== 109 ||
+          bytes[4] !== 1 || bytes[5] !== 0 || bytes[6] !== 0 || bytes[7] !== 0) {
+        throw new Error("invalid kernel wasm header");
+      }
+      return bytes;
+    })().catch((error) => {
+      _kernelBytesPromise = null;
+      throw error;
+    });
   }
   return _kernelBytesPromise;
 }
@@ -51,7 +62,10 @@ function mod() {
       }
       // Pass a copy so emscripten can never detach the buffer verifyKernelSha hashes.
       return window.SealModule({ wasmBinary: (await kernelBytes()).slice(), print: () => {}, printErr: () => {} });
-    })();
+    })().catch((error) => {
+      _modPromise = null;
+      throw error;
+    });
   }
   return _modPromise;
 }
