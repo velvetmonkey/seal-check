@@ -67,12 +67,10 @@ body {
   outline-offset: 2px;
 }
 
-/* compact header: title, kernel identity, theme toggle and the privacy
-   disclosure share one row, so the paste box owns the top of the first
-   screen rather than a paragraph of branding/legal text. */
-header {
+/* Header controls wrap naturally, with breathing room above and below. */
+header.wrap {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
-  padding: 10px 16px; border-bottom: 1px solid var(--seal-border);
+  padding: 18px 16px; border-bottom: 1px solid var(--seal-border);
   background: var(--seal-surface);
 }
 h1 { margin: 0; font-size: 18px; letter-spacing: -0.4px; }
@@ -132,7 +130,7 @@ code { background: var(--seal-accent-soft); padding: 1px 5px; border-radius: 4px
 .tip { position: relative; display: inline-flex; align-items: center; }
 .tip-btn {
   font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
-  width: 16px; height: 16px; padding: 0; margin-left: 4px;
+  width: 28px; height: 28px; padding: 0; margin-left: 4px;
   border-radius: 999px; border: 1px solid var(--seal-muted);
   background: transparent; color: var(--seal-muted);
   display: inline-flex; align-items: center; justify-content: center;
@@ -145,10 +143,11 @@ code { background: var(--seal-accent-soft); padding: 1px 5px; border-radius: 4px
 }
 .tip-body {
   position: absolute; top: 100%; right: 0; margin-top: 4px;
-  width: max-content; max-width: 36ch; z-index: 20;
+  width: min(42ch, calc(100vw - 32px)); max-width: calc(100vw - 32px); z-index: 20;
+  overflow-wrap: anywhere; white-space: normal; font-family: system-ui, sans-serif;
   background: var(--seal-surface); color: var(--seal-text);
   border: 1px solid var(--seal-muted); border-radius: var(--seal-radius);
-  padding: 8px 10px; font-size: 13px; font-weight: 400; line-height: 1.4;
+  padding: 12px 14px; font-size: 14px; font-weight: 400; line-height: 1.6;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
   text-align: left;
 }
@@ -247,16 +246,16 @@ footer h3 { margin-bottom: 6px; }
 .rv-panes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .input-pane textarea#paste-input { min-height: 180px; }
 @media (min-width: 900px) {
-  .input-pane textarea#paste-input { min-height: 420px; }
+  .input-pane textarea#paste-input { min-height: 180px; }
 }
 .output-pane { min-width: 0; }
 .safety-note { font-size: 13.5px; margin-top: 6px; }
 
-/* Match the docs callout shape and spacing, with the existing verdict palette. */
-.rv-banner { border-left: 3px solid var(--seal-border); border-radius: 0 var(--seal-radius) var(--seal-radius) 0; padding: 0.85rem 1.1rem; margin: 0 0 8px; background: var(--seal-surface); }
-.rv-banner.ok { background: var(--seal-success-soft); border-color: var(--seal-success); }
-.rv-banner.bad { background: var(--seal-danger-soft); border-color: var(--seal-danger); }
-.rv-banner.warn { background: var(--seal-warning-soft); border-color: var(--seal-warning); }
+/* Decision card: the recorded decision leads its subordinate verification note. */
+.rv-banner { border: 1px solid var(--seal-border); border-radius: var(--seal-radius); padding: 20px; margin: 0; background: var(--seal-surface); }
+.rv-banner.ok { border-color: var(--seal-success); }
+.rv-banner.bad { border-color: var(--seal-danger); }
+.rv-banner.warn { border-color: var(--seal-border); }
 .rv-banner-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .rv-headline { font-size: 20px; font-weight: 600; line-height: 1.5; }
 .rv-banner.ok .rv-headline { color: var(--seal-success); }
@@ -264,7 +263,14 @@ footer h3 { margin-bottom: 6px; }
 .rv-banner.warn .rv-headline { color: var(--seal-warning); }
 .rv-outcome-tag { font-family: var(--mono); font-size: 12px; color: var(--seal-muted); white-space: nowrap; }
 .rv-outcome-tag:empty { display: none; }
-.rv-subline { margin: 6px 0 0; font-size: 16px; line-height: 1.75; color: var(--seal-text); max-width: 76ch; display: flex; align-items: flex-start; gap: 4px; }
+.rv-subline { margin: 12px 0 0; font-size: 14px; line-height: 1.6; color: var(--seal-muted); max-width: 76ch; display: flex; align-items: flex-start; gap: 8px; }
+.rv-subline > .tip { flex-shrink: 0; }
+.decision-label { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.decision-label .muted { font-weight: 400; }
+.decision-heading .verdict { display: inline-block; font-size: clamp(28px, 5vw, 38px); line-height: 1.2; padding: 4px 10px; letter-spacing: 0; overflow-wrap: anywhere; max-width: 100%; }
+.decision-heading .verdict:empty { display: none; }
+#rv-decision-note:empty { display: none; }
+#rv-decision-note { font-size: 14px; overflow-wrap: anywhere; }
 .rv-fails { margin: 8px 0 0; padding-left: 1.3em; color: var(--seal-danger); }
 .rv-fails li { padding: 1px 0; font-size: 15px; }
 
@@ -285,12 +291,16 @@ footer h3 { margin-bottom: 6px; }
    ever renders as a single pass/fail badge — each dimension is its own row,
    and Signer authority / Decision occurred / Targets authorised can never
    render a green checkmark. */
-.rv-table-wrap { overflow-x: auto; margin: 10px 0; background: var(--seal-surface); border: 1px solid var(--seal-border); border-radius: var(--seal-radius); }
-.rv-table { font-size: 13.5px; table-layout: fixed; margin-bottom: 0; }
-.rv-table th, .rv-table td { padding: 6px 8px; }
-.rvt-col-field { width: 11em; }
-.rvt-col-state { width: 9em; }
-.rvt-col-tip { width: 2em; }
+.rv-table-wrap { margin: 10px 0; background: var(--seal-surface); border: 1px solid var(--seal-border); border-radius: var(--seal-radius); }
+.rv-table { font-size: 14px; table-layout: fixed; margin-bottom: 0; }
+.rv-table th, .rv-table td { padding: 14px 16px; }
+.rv-table thead th { font-size: 12px; font-weight: 500; }
+.rvt-col-field { width: 25%; }
+.rvt-col-value { width: 49%; max-width: 60ch; }
+.rvt-col-state { width: 20%; }
+.rvt-col-tip { width: 6%; }
+.rv-table td:last-child { padding-left: 0; padding-right: 12px; text-align: right; }
+.rv-table tbody:not(.rvt-group) tr:last-child > * { border-bottom: 0; }
 .rv-table th[scope="row"] { font-weight: 600; }
 /* The Value column (2nd cell of every row) can carry an unbroken hash or
    JSON blob whether or not the row's markup gave it the .rvt-value class —
@@ -301,9 +311,9 @@ footer h3 { margin-bottom: 6px; }
    pushing .rv-table-wrap's scrollable width past its container. Wrapping
    the column itself (not just the .rvt-value-classed Checks rows) fixes
    that at every width, matching the card layout's own wrap rule below. */
-.rv-table td:nth-child(2) { overflow-wrap: anywhere; }
-.rv-table .rvt-value { font-family: var(--mono); word-break: break-all; }
-.rv-table .rvt-state { white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+.rv-table td:nth-child(2) { max-width: 60ch; overflow-wrap: anywhere; }
+.rv-table .rvt-value { font-family: var(--mono); word-break: normal; }
+.rv-table .rvt-state { white-space: normal; font-family: var(--mono); font-size: 13px; }
 .rv-table .rvt-pass { color: var(--seal-success); }
 .rv-table .rvt-fail { color: var(--seal-danger); font-weight: 700; }
 .rv-table .rvt-skip { color: var(--seal-warning); }
@@ -311,37 +321,26 @@ footer h3 { margin-bottom: 6px; }
 .rv-table tr.rvt-row-fail td, .rv-table tr.rvt-row-fail th { background: var(--seal-danger-soft); }
 .rv-table tr.rvt-row-fail th { box-shadow: inset 3px 0 0 var(--seal-danger); }
 
-/* Below ~560px the fixed 11em/9em/2em columns leave Value a few characters
-   wide, wrapping hashes and JSON one syllable per line. Below that width the
-   table becomes one card per row instead: Field (already a <th scope="row">)
-   as the card's heading, then Value and Re-check each on their own full-width
-   line, so long hashes read as continuous wrapped text, not fragments. No
-   content changes — every field, tooltip and detail is still here, just
-   stacked instead of squeezed into fixed columns. */
-@media (max-width: 560px) {
-  .rv-table, .rv-table thead, .rv-table tbody, .rv-table tr, .rv-table th, .rv-table td {
-    display: block;
-  }
-  .rv-table colgroup { display: none; }
-  .rv-table thead { display: none; }
-  .rv-table tbody:not(.rvt-group) tr {
-    padding: 8px 8px 10px;
-    border-bottom: 1px solid var(--seal-border);
-  }
-  .rv-table tbody:not(.rvt-group) tr:last-child { border-bottom: 0; }
-  .rv-table th[scope="row"] { padding: 0 0 2px; }
-  .rv-table td { padding: 2px 0; }
-  /* Whichever module built this row (app.js's row(), receipt-summary.js,
-     appendSummaryRow), the Value cell is always the second cell — force it
-     to wrap as continuous text at its own full card width, regardless of
-     which per-class mono/word-break rule (or none) it carries above. */
-  .rv-table td:nth-child(2) { word-break: break-word; overflow-wrap: anywhere; }
-  .rv-table .rvt-state::before { content: "Re-check: "; color: var(--seal-muted); font-weight: 600; }
+/* Group titles separate recorded claims from checks without repeating heavy rules. */
+.rvt-group th { background: var(--seal-bg); color: var(--seal-text); font-size: 14px; font-weight: 700; padding: 16px; border-top: 1px solid var(--seal-border); }
+/* Stack each field and value on mobile; keep its info button alongside the label. */
+@media (max-width: 700px) {
+  .rv-table, .rv-table tbody { display: block; }
+  .rv-table colgroup, .rv-table thead { display: none; }
+  .rv-table tr { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 6px 8px; padding: 16px; border-bottom: 1px solid var(--seal-border); }
+  .rv-table th, .rv-table td { display: block; padding: 0; border: 0; min-width: 0; }
+  .rv-table th { grid-column: 1; grid-row: 1; align-self: center; }
+  .rv-table td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; max-width: 100%; word-break: normal; overflow-wrap: anywhere; }
+  .rv-table td:nth-child(3) { grid-column: 1 / -1; grid-row: 3; }
+  .rv-table td:last-child { grid-column: 2; grid-row: 1; padding: 0; }
+  .rv-table .rvt-state::before { content: "Re-check: "; color: var(--seal-muted); font-family: system-ui, sans-serif; }
   .rv-table td:empty { display: none; }
+  .rv-table .rvt-group tr { display: block; background: var(--seal-bg); }
+  .rv-table .rvt-group th { background: none; }
+  .rv-banner { padding: 16px; }
+  header .header-actions { margin-left: 0; }
+  header .pill { max-width: calc(100% - 48px); overflow-wrap: anywhere; }
 }
-/* group heading rows: their own single-row tbody so #receipt-summary keeps
-   exactly six <tr> children (receipt-summary.test.mjs). */
-.rvt-group th { background: var(--seal-bg); color: var(--seal-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; padding: 6px 8px; }
 
 #rv-tech { margin-top: 12px; padding-bottom: 0; }
 #rv-tech > *:not(summary) { padding-left: 12px; padding-right: 12px; }
