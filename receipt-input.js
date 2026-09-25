@@ -19,7 +19,14 @@ export function pastedReceiptDocumentOrError(raw) {
       if (!text.startsWith("#")) new URL(text);
       return { ok: true, document: b64urlToStr(link[1]) };
     }
-    if (/^[A-Za-z0-9_-]{8,}=*$/.test(text)) return { ok: true, document: b64urlToStr(text) };
+    if (/^[A-Za-z0-9_-]{8,}=*$/.test(text)) {
+      // A bare receipt blob must begin with a JSON object or array after decoding.
+      // Inspect the bytes first so ordinary identifiers never reach b64urlToStr.
+      let bytes = "";
+      try { bytes = atob(text.replace(/-/g, "+").replace(/_/g, "/")); }
+      catch { /* A bare token that is not base64url stays literal text. */ }
+      if (/^[\t\n\r ]*[{[]/.test(bytes)) return { ok: true, document: b64urlToStr(text) };
+    }
   } catch (error) {
     return { ok: false, error: "could not decode that as base64url: " + error.message };
   }
