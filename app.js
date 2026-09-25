@@ -54,9 +54,6 @@ async function boot() {
 }
 
 // --- deep-linked receipt verification (opened via #receipt=...) --------------
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
 function rvLine(okFlag, text) {
   const li = el("li", "rv-" + (okFlag === true ? "ok" : okFlag === false ? "bad" : "skip"));
   li.textContent = (okFlag === true ? "✓ " : okFlag === false ? "✗ " : "• ") + text;
@@ -644,20 +641,6 @@ async function renderSignedFamilyReceipt(text, receipt, family, { isCurrent, scr
 }
 
 // --- pasted receipt ----------------------------------------------------------
-// The paste box accepts a receipt in any form it travels: the raw JSON
-// document, a full link carrying #receipt=<base64url>, or the bare base64url
-// blob. Everything is reduced to the received DOCUMENT TEXT before it reaches
-// verifyReceipt — never a pre-parsed object — so a pasted receipt gets the
-// same §12.6 document-level scrutiny as a deep-linked one.
-function pastedDocumentText(raw) {
-  const text = raw.trim();
-  if (!text) return null;
-  const link = text.match(/#receipt=([A-Za-z0-9_-]+=*)/);
-  if (link) return b64urlToStr(link[1]);
-  if (/^[A-Za-z0-9_-]{8,}=*$/.test(text)) return b64urlToStr(text);
-  return text;
-}
-
 let pasteTimer = null;
 function onPasteInput() {
   // Invalidate fragment/example renders as soon as the visitor edits the box,
