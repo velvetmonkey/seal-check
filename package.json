@@ -1,6 +1,7 @@
 {
   "name": "seal-check",
   "private": true,
+  "type": "module",
   "scripts": {
     "test": "node --check app.js && node --check receipt.js && node test/receipt-format.test.cjs && node test/receipt-harness.cjs && node test/cross-receipt.test.cjs && node test/receipt-verify.test.cjs && node test/receipt-format-v3.test.cjs && node test/receipt-document.test.cjs && node test/unparseable-forge.test.cjs && node test/pathological-number.test.cjs && node test/verify-profile.test.cjs && node scripts/claims-drift.mjs && node --test test/claims-drift.test.mjs && node --test test/page-claims-source.test.mjs && node --test test/page-merge.test.mjs && node --test test/page-module-imports.test.mjs && node --test test/fragment-classifier.test.mjs && node --test test/receipt-input.test.mjs && node --test test/receipt-summary.test.mjs && node test/spine-receipt.test.cjs && node scripts/contrast.mjs"
   }
