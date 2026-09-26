@@ -10,6 +10,8 @@
 // Schema K objects are rejected with the spec's regenerate error.
 import { decideSignedRaw, verifyKernelSha } from "./kernel.js";
 import nacl from "./vendor/nacl.js";
+import { b64urlToStr } from "./receipt-decoder.js";
+export { b64urlToStr } from "./receipt-decoder.js";
 import {
   HOST_AUDIT_VERDICT_MAP,
   canonicalRequest, canonicalRequestSha256, capabilityTargetsFromPolicy, sha256Hex, validateReceipt,
@@ -100,13 +102,6 @@ function auditRequestHash(emittedBytes) {
   } catch {
     return null;
   }
-}
-
-export function b64urlToStr(s) {
-  s = s.replace(/-/g, "+").replace(/_/g, "/");
-  while (s.length % 4) s += "=";
-  const bytes = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
 }
 
 // Human summary of the call a receipt mediated. Recognizes the seal-live-demo

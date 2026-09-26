@@ -170,3 +170,89 @@ test("normal and exact-ceiling files retain per-field wiring and trimming", asyn
     }
   }
 });
+
+for (const [name, bytes] of [
+  ["invalid continuation", [0xc3, 0x28]],
+  ["overlong encoding", [0xc0, 0xaf]],
+  ["lone surrogate", [0xed, 0xa0, 0x80]],
+]) {
+  test(`pasted text, link and uploaded encoded file refuse ${name} by name and recover`, async () => {
+    const encoded = Buffer.concat([Buffer.from('{"text":"'), Buffer.from(bytes), Buffer.from('"}')]).toString("base64url");
+    for (const raw of [encoded, `  https://example.invalid/#receipt=${encoded} \n`]) {
+      assert.deepEqual(pastedReceiptDocumentOrError(raw), { ok: false, error: "receipt payload is not valid UTF-8" });
+      const page = await inputPage();
+      page.get("paste-input").value = raw;
+      await page.paste();
+      assert.equal(page.get("rv-summary").textContent, "receipt payload is not valid UTF-8");
+      assert.deepEqual(page.processed, []);
+      page.get("paste-input").value = Buffer.from('{"text":"😀 Ελληνικά"}').toString("base64url");
+      await page.paste();
+      assert.deepEqual(page.processed, ['{"text":"😀 Ελληνικά"}']);
+    }
+    const page = await inputPage();
+    await page.get("receipt-file").listeners.change({ target: { files: [{ size: encoded.length, async text() { return encoded; } }] } });
+    assert.equal(page.get("rv-summary").textContent, "receipt payload is not valid UTF-8");
+    assert.deepEqual(page.processed, []);
+  });
+}
+
+test("valid Unicode, BOM and padded receipts retain the transport contract", () => {
+  const document = '{"text":"😀 Ελληνικά"}';
+  for (const text of [document, '\ufeff' + document]) {
+    const encoded = Buffer.from(text).toString("base64url");
+    // A bare blob is selected by its JSON-leading bytes; BOM blobs use a link.
+    assert.deepEqual(pastedReceiptDocumentOrError(` \nhttps://example.invalid/#receipt=${encoded} \t`), { ok: true, document });
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=");
+    assert.deepEqual(pastedReceiptDocumentOrError(`#receipt=${padded}`), { ok: true, document });
+  }
+});
+
+test("one changed signed-string byte is refused on all five transports", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { b64urlToStr, decodeReceiptDocument } = await import("../receipt.js");
+  const { classifyReceiptFragment } = await import("../fragment-classifier.js");
+  const bytes = readFileSync(new URL("fixtures/host-v2-block.receipt.json", import.meta.url));
+  const index = bytes.indexOf("seal-shell-demo");
+  assert.ok(index > 0, "real signed_config payload string exists");
+  bytes[index] = 0xc3;
+  const encoded = bytes.toString("base64url");
+  const message = "receipt payload is not valid UTF-8";
+  assert.throws(() => b64urlToStr(encoded), { message });
+  const previousLocation = globalThis.location;
+  try {
+    globalThis.location = { hash: "#receipt=" + encoded };
+    assert.throws(() => decodeReceiptDocument(), { message });
+  } finally { globalThis.location = previousLocation; }
+  assert.deepEqual(pastedReceiptDocumentOrError(encoded), { ok: false, error: message });
+  assert.deepEqual(pastedReceiptDocumentOrError(`https://example.invalid/#receipt=${encoded}`), { ok: false, error: message });
+  assert.deepEqual(classifyReceiptFragment("#receipt=" + encoded), { kind: "unparseable", error: message });
+  const page = await inputPage();
+  await page.get("receipt-file").listeners.change({ target: { files: [{ size: encoded.length, async text() { return encoded; } }] } });
+  assert.equal(page.get("rv-summary").textContent, message);
+  assert.deepEqual(page.processed, []);
+  const valid = readFileSync(new URL("fixtures/host-v2-block.receipt.json", import.meta.url), "utf8");
+  page.get("paste-input").value = valid;
+  await page.paste();
+  assert.deepEqual(page.processed, [valid]);
+});
+
+test("largest real fixture stays exact through shared decoder, fragment, paste and upload", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { b64urlToStr, decodeReceiptDocument } = await import("../receipt.js");
+  const { classifyReceiptFragment } = await import("../fragment-classifier.js");
+  const document = readFileSync(new URL("fixtures/host-v3-block.receipt.json", import.meta.url), "utf8");
+  assert.equal(Buffer.byteLength(document), 7605);
+  const encoded = Buffer.from(document).toString("base64url");
+  assert.equal(b64urlToStr(encoded), document);
+  const previousLocation = globalThis.location;
+  try {
+    globalThis.location = { hash: "#receipt=" + encoded };
+    assert.equal(decodeReceiptDocument(), document);
+  } finally { globalThis.location = previousLocation; }
+  assert.equal(classifyReceiptFragment("#receipt=" + encoded).document, document);
+  assert.deepEqual(pastedReceiptDocumentOrError(encoded), { ok: true, document });
+  assert.deepEqual(pastedReceiptDocumentOrError(` \nhttps://example.invalid/#receipt=${encoded} \t`), { ok: true, document });
+  const page = await inputPage();
+  await page.get("receipt-file").listeners.change({ target: { files: [{ size: encoded.length, async text() { return encoded; } }] } });
+  assert.deepEqual(page.processed, [document]);
+});

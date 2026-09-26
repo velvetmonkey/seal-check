@@ -66,3 +66,18 @@ for (const hash of ["", "#", "#x", "#receipt", "#receipt=", "#receipt=A", "#rece
 }
 
 console.log("fragment classifier: total six-state partition passed");
+
+for (const [name, bytes] of [
+  ["invalid continuation", [0xc3, 0x28]],
+  ["overlong encoding", [0xc0, 0xaf]],
+  ["lone surrogate", [0xed, 0xa0, 0x80]],
+]) {
+  const result = classifyReceiptFragment("#receipt=" + Buffer.from(bytes).toString("base64url"));
+  assert.equal(result.kind, "unparseable", name);
+  assert.equal(result.error, "receipt payload is not valid UTF-8", name);
+  assert.equal(result.document, undefined, name);
+}
+const unicodeDocument = '{"text":"😀 Ελληνικά"}';
+assert.equal(classifyReceiptFragment("#receipt=" + encoded(unicodeDocument)).document, unicodeDocument);
+assert.equal(classifyReceiptFragment("#receipt=" + encoded('\ufeff' + validReceipt)).document, validReceipt);
+console.log("fragment classifier: strict UTF-8, Unicode and BOM checks passed");
