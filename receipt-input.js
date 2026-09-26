@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { b64urlToStr } from "./receipt.js";
+import { b64urlToStr, INVALID_UTF8_MESSAGE } from "./receipt-decoder.js";
 
 export function pastedReceiptDocumentOrError(raw) {
   const text = raw.trim();
@@ -28,7 +28,7 @@ export function pastedReceiptDocumentOrError(raw) {
       if (/^[\t\n\r ]*[{[]/.test(bytes)) return { ok: true, document: b64urlToStr(text) };
     }
   } catch (error) {
-    return { ok: false, error: "could not decode that as base64url: " + error.message };
+    return { ok: false, error: error.message === INVALID_UTF8_MESSAGE ? error.message : "could not decode that as base64url: " + error.message };
   }
   return { ok: true, document: text };
 }

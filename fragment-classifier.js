@@ -5,20 +5,7 @@
 // five explicit visitor states below.
 import { classifyReceiptDocument } from "./receipt-format.js";
 
-// 128 KiB of encoded receipt text is over 12 times the largest checked-in
-// receipt fixture (7,605 bytes, about 10 KiB as base64url).
-const MAX_ENCODED_RECEIPT_LENGTH = 128 * 1024;
-
-function decodeBase64url(value) {
-  if (value.length > MAX_ENCODED_RECEIPT_LENGTH)
-    throw new Error(`receipt payload exceeds ${MAX_ENCODED_RECEIPT_LENGTH} encoded characters (got ${value.length})`);
-  if (!/^[A-Za-z0-9_-]*={0,2}$/.test(value) || value.length % 4 === 1)
-    throw new Error("receipt payload is not valid base64url");
-  let encoded = value.replace(/-/g, "+").replace(/_/g, "/");
-  while (encoded.length % 4) encoded += "=";
-  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
+import { b64urlToStr, INVALID_UTF8_MESSAGE } from "./receipt-decoder.js";
 
 export function classifyReceiptFragment(hash) {
   if (hash === "") return { kind: "absent" };
@@ -42,9 +29,9 @@ export function classifyReceiptFragment(hash) {
 
   let document;
   try {
-    document = decodeBase64url(encoded);
+    document = b64urlToStr(encoded);
   } catch (error) {
-    return { kind: "unparseable", error: `could not decode the receipt link: ${error.message}` };
+    return { kind: "unparseable", error: error.message === INVALID_UTF8_MESSAGE ? error.message : `could not decode the receipt link: ${error.message}` };
   }
 
   if (document.trim() === "") return {

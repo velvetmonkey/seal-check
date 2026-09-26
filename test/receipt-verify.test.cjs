@@ -48,6 +48,28 @@ const flipHexChar = (s) => (s[0] === "0" ? "1" : "0") + s.slice(1);
   const invalidV3 = await R.verifyReceipt(JSON.stringify(badV3));
   check("v3 entry point: invalid Object B signature fails", invalidV3.formatOk === false && invalidV3.outcome === "failure" && invalidV3.formatErrors.some(e => e.includes("Ed25519 verification failed")));
 
+  const assert = require("node:assert/strict");
+  for (const [name, bytes] of [
+    ["invalid continuation", [0xc3, 0x28]],
+    ["overlong encoding", [0xc0, 0xaf]],
+    ["lone surrogate", [0xed, 0xa0, 0x80]],
+  ]) {
+    const encoded = Buffer.from(bytes).toString("base64url");
+    assert.throws(() => R.b64urlToStr(encoded), { message: "receipt payload is not valid UTF-8" }, name);
+    globalThis.location = { hash: "#receipt=" + encoded };
+    assert.throws(() => R.decodeReceiptDocument(), { message: "receipt payload is not valid UTF-8" }, `URL fragment ${name}`);
+    check(`shared decoder and URL fragment refuse ${name} by name`, true);
+  }
+  assert.equal(R.b64urlToStr(""), "");
+  const unicode = '{"text":"😀 Ελληνικά"}';
+  assert.equal(R.b64urlToStr(Buffer.from(unicode).toString("base64url")), unicode);
+  assert.equal(R.b64urlToStr(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(unicode)]).toString("base64url")), unicode);
+  for (const encoded of ["e30", "e30="]) assert.equal(R.b64urlToStr(encoded), "{}");
+  for (const encoded of ["e30===", "e+30", "e/30", " e30", "A"])
+    assert.throws(() => R.b64urlToStr(encoded), { message: "receipt payload is not valid base64url" });
+  assert.throws(() => R.b64urlToStr("A".repeat(131076)), { message: "receipt payload exceeds 131072 encoded characters (got 131076)" });
+  check("shared decoder preserves Unicode, BOM policy, padding and transport guards", true);
+
   // Produce a genuine receipt through the SHIPPED pipeline.
   const call = {
     tool: "store.update", args: { op: "orset.add", key: "k1" },
