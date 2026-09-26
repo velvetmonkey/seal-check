@@ -3,6 +3,7 @@
 import {
   ready, verifyKernelSha,
 } from "./kernel.js";
+import { decodeUtf8Bytes, INVALID_UTF8_MESSAGE } from "./receipt-decoder.js";
 import { b64urlToStr, verifyReceipt, callSummary } from "./receipt.js";
 import { classifyReceiptDocument } from "./receipt-format.js";
 import { classifyReceiptFragment } from "./fragment-classifier.js";
@@ -700,12 +701,17 @@ function init() {
         clearTimeout(pasteTimer);
         try {
           if (file.size > MAX_RECEIPT_INPUT_BYTES) return showReceiptError(INPUT_SIZE_ERROR);
-          const text = await file.text();
+          const bytes = new Uint8Array(await file.arrayBuffer());
           if (version !== locationRenderVersion) return;
+          const text = decodeUtf8Bytes(bytes);
           $(textId).value = text.trim();
           await checkPasted(version);
         } catch (error) {
-          if (version === locationRenderVersion) showReceiptError("File could not be read: " + error.message);
+          if (version === locationRenderVersion) {
+            showReceiptError(error.message === INVALID_UTF8_MESSAGE
+              ? INVALID_UTF8_MESSAGE
+              : "File could not be read: " + error.message);
+          }
         } finally {
           event.target.value = "";
         }

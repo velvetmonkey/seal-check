@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as decoder from "../receipt-decoder.js";
+import { INVALID_UTF8_MESSAGE } from "../receipt-decoder.js";
 import { pastedReceiptDocumentOrError } from "../receipt-input.js";
 
 test("defect 2: empty pasted input is a visible refusal, not a silent no-op", () => {
@@ -103,6 +105,7 @@ async function inputPage() {
     renderPageClaims() {}, installTooltipBehavior() {},
     clearReceiptSummary: (n) => n.replaceChildren(),
     pastedReceiptDocumentOrError(raw) { decoded.push(raw); return pastedReceiptDocumentOrError(raw); },
+    decodeUtf8Bytes: decoder.decodeUtf8Bytes, INVALID_UTF8_MESSAGE,
     recordDocument: (raw) => processed.push(raw),
   };
   const source = readFileSync(new URL("../app.js", import.meta.url), "utf8")
@@ -111,6 +114,23 @@ async function inputPage() {
     .replace(/\ninit\(\);\s*$/, "\nboot = async () => {}; renderClassifiedReceiptDocument = async (raw) => recordDocument(raw); init();");
   runInNewContext(source, context);
   return { get, processed, decoded, paste: context.checkPasted };
+}
+
+function fileStub(raw, counters = {}) {
+  const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+  return {
+    size: buf.length,
+    async text() {
+      counters.reads?.();
+      if (counters.textReads !== undefined) counters.textReads++;
+      return new TextDecoder().decode(buf);
+    },
+    async arrayBuffer() {
+      counters.reads?.();
+      if (counters.bufReads !== undefined) counters.bufReads++;
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    },
+  };
 }
 
 const INPUT_LIMIT = 1024 * 1024;
@@ -132,12 +152,16 @@ test("oversized pasted receipt is refused before processing, including UTF-8", a
   }
 });
 
-test("oversized uploads are refused before file.text for both fields", async () => {
+test("oversized uploads are refused before the file bytes are read for both fields", async () => {
   for (const [fileId, textId] of [["receipt-file", "paste-input"], ["signer-file", "signer-key"]]) {
     const page = await inputPage();
     page.get(textId).value = "previous";
     let reads = 0;
-    await page.get(fileId).listeners.change({ target: { files: [{ size: INPUT_LIMIT + 1, async text() { reads++; return "{}"; } }] } });
+    await page.get(fileId).listeners.change({ target: { files: [{
+      size: INPUT_LIMIT + 1,
+      async text() { reads++; return "{}"; },
+      async arrayBuffer() { reads++; return new Uint8Array([0x7b, 0x7d]).buffer; },
+    }] } });
     assert.equal(reads, 0, "oversized file must never be read");
     assert.equal(page.get(textId).value, "previous");
     assertSizeRefusal(page);
@@ -163,7 +187,7 @@ test("normal and exact-ceiling files retain per-field wiring and trimming", asyn
       const page = await inputPage();
       page.get("paste-input").value = fixture;
       let reads = 0;
-      await page.get(fileId).listeners.change({ target: { files: [{ size: Buffer.byteLength(raw), async text() { reads++; return raw; } }] } });
+      await page.get(fileId).listeners.change({ target: { files: [fileStub(raw, { reads: () => { reads++; } })] } });
       assert.equal(reads, 1);
       assert.equal(page.get(textId).value, raw.trim());
       assert.deepEqual(page.processed, [fileId === "receipt-file" ? raw.trim() : fixture]);
@@ -190,7 +214,7 @@ for (const [name, bytes] of [
       assert.deepEqual(page.processed, ['{"text":"😀 Ελληνικά"}']);
     }
     const page = await inputPage();
-    await page.get("receipt-file").listeners.change({ target: { files: [{ size: encoded.length, async text() { return encoded; } }] } });
+    await page.get("receipt-file").listeners.change({ target: { files: [fileStub(encoded)] } });
     assert.equal(page.get("rv-summary").textContent, "receipt payload is not valid UTF-8");
     assert.deepEqual(page.processed, []);
   });
@@ -227,7 +251,7 @@ test("one changed signed-string byte is refused on all five transports", async (
   assert.deepEqual(pastedReceiptDocumentOrError(`https://example.invalid/#receipt=${encoded}`), { ok: false, error: message });
   assert.deepEqual(classifyReceiptFragment("#receipt=" + encoded), { kind: "unparseable", error: message });
   const page = await inputPage();
-  await page.get("receipt-file").listeners.change({ target: { files: [{ size: encoded.length, async text() { return encoded; } }] } });
+  await page.get("receipt-file").listeners.change({ target: { files: [fileStub(encoded)] } });
   assert.equal(page.get("rv-summary").textContent, message);
   assert.deepEqual(page.processed, []);
   const valid = readFileSync(new URL("fixtures/host-v2-block.receipt.json", import.meta.url), "utf8");
@@ -253,6 +277,79 @@ test("largest real fixture stays exact through shared decoder, fragment, paste a
   assert.deepEqual(pastedReceiptDocumentOrError(encoded), { ok: true, document });
   assert.deepEqual(pastedReceiptDocumentOrError(` \nhttps://example.invalid/#receipt=${encoded} \t`), { ok: true, document });
   const page = await inputPage();
-  await page.get("receipt-file").listeners.change({ target: { files: [{ size: encoded.length, async text() { return encoded; } }] } });
+  await page.get("receipt-file").listeners.change({ target: { files: [fileStub(encoded)] } });
   assert.deepEqual(page.processed, [document]);
+});
+
+test("planted 0xFF receipt file is refused by name and paints nothing", async () => {
+  const { readFileSync } = await import("node:fs");
+  const bytes = Buffer.from(readFileSync(new URL("fixtures/host-v2-block.receipt.json", import.meta.url)));
+  const index = bytes.indexOf("seal-shell-demo");
+  assert.ok(index > 0, "real signed_config payload string exists");
+  bytes[index] = 0xff;
+  const page = await inputPage();
+  const counters = { textReads: 0, bufReads: 0 };
+  const target = { files: [fileStub(bytes, counters)], value: "kept" };
+  await page.get("receipt-file").listeners.change({ target });
+  assert.equal(page.get("rv-summary").textContent, INVALID_UTF8_MESSAGE);
+  assert.equal(page.get("rv-json").textContent, "");
+  assert.equal(page.get("rv-verdict").textContent, "ERROR");
+  assert.deepEqual(page.processed, []);
+  assert.equal(page.decoded.length, 0, "invalid UTF-8 must not reach the paste helper");
+  assert.equal(counters.bufReads, 1);
+  assert.equal(counters.textReads, 0);
+  assert.equal(target.value, "");
+});
+
+test("valid receipt file still reaches verification through the bytes path", async () => {
+  const { readFileSync } = await import("node:fs");
+  const raw = readFileSync(new URL("fixtures/host-v2-block.receipt.json", import.meta.url));
+  const page = await inputPage();
+  const counters = { textReads: 0, bufReads: 0 };
+  await page.get("receipt-file").listeners.change({ target: { files: [fileStub(raw, counters)] } });
+  assert.equal(counters.bufReads, 1);
+  assert.equal(counters.textReads, 0);
+  assert.deepEqual(page.processed, [Buffer.from(raw).toString("utf8").trim()]);
+});
+
+test("UTF-8 BOM receipt file matches master File.text BOM stripping", async () => {
+  const { readFileSync } = await import("node:fs");
+  const raw = readFileSync(new URL("../examples/allow.receipt.json", import.meta.url));
+  const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), raw]);
+  const stripped = new TextDecoder().decode(bom).trim();
+  const page = await inputPage();
+  const counters = { textReads: 0, bufReads: 0 };
+  await page.get("receipt-file").listeners.change({ target: { files: [fileStub(bom, counters)] } });
+  assert.equal(counters.bufReads, 1);
+  assert.equal(counters.textReads, 0);
+  assert.equal(stripped.startsWith("{"), true);
+  assert.equal(stripped.includes("\ufeff"), false);
+  assert.deepEqual(page.processed, [stripped]);
+});
+
+test("signer-key file uses the same fatal UTF-8 decoder", async () => {
+  const { readFileSync } = await import("node:fs");
+  const page = await inputPage();
+  const counters = { textReads: 0, bufReads: 0 };
+  await page.get("signer-file").listeners.change({
+    target: { files: [fileStub(Buffer.from([0x41, 0xff, 0x42]), counters)] },
+  });
+  assert.equal(page.get("rv-summary").textContent, INVALID_UTF8_MESSAGE);
+  assert.equal(page.get("signer-key").value, "");
+  assert.deepEqual(page.processed, []);
+  assert.equal(counters.bufReads, 1);
+  assert.equal(counters.textReads, 0);
+
+  const pub = readFileSync(new URL("../examples/protect-signer.pub", import.meta.url));
+  const valid = readFileSync(new URL("../examples/allow.receipt.json", import.meta.url), "utf8");
+  const page2 = await inputPage();
+  page2.get("paste-input").value = valid;
+  const counters2 = { textReads: 0, bufReads: 0 };
+  await page2.get("signer-file").listeners.change({
+    target: { files: [fileStub(pub, counters2)] },
+  });
+  assert.equal(counters2.bufReads, 1);
+  assert.equal(counters2.textReads, 0);
+  assert.equal(page2.get("signer-key").value, Buffer.from(pub).toString("utf8").trim());
+  assert.deepEqual(page2.processed, [valid]);
 });
