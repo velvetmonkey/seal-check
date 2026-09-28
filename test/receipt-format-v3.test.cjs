@@ -272,6 +272,33 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     JSON.stringify([true, "v3", []]));
   check("minted v3 ALLOW receipt_signature_valid", r.receipt_signature_valid, true);
 
+  // Re-sign a frame with a probe string while keeping every raw-byte bind valid.
+  const mintAllowWithProbe = (probeBytes) => {
+    const a = clone(allow);
+    const sourceFrame = Buffer.from(a.release_frame.base64, "base64");
+    const marker = Buffer.from(',"operation_id":');
+    const at = sourceFrame.indexOf(marker);
+    const frame = Buffer.concat([
+      sourceFrame.subarray(0, at), Buffer.from(',"probe":"'), probeBytes,
+      Buffer.from('"'), sourceFrame.subarray(at),
+    ]);
+    const frameSha = F.sha256Hex(frame);
+    a.release_frame = { encoding: "base64", length: frame.length,
+      sha256: frameSha, base64: b64enc(frame, B64S, true) };
+    a.post_state_hash = F.postStateHash(opId, frameSha);
+    const sig = nacl.sign.detached(F.receiptSignaturePreimage(a), kp.secretKey);
+    a.signature.value = b64enc(sig, B64U, false);
+    return a;
+  };
+  r = V(mintAllowWithProbe(Buffer.from([0xff])));
+  check("release_frame invalid UTF-8 refused", r.ok, false);
+  check("release_frame invalid UTF-8 has one named error", JSON.stringify(r.errors),
+    JSON.stringify(["release_frame: decoded frame is not valid UTF-8"]));
+  check("release_frame invalid UTF-8 remains correctly signed", r.receipt_signature_valid, true);
+  r = V(mintAllowWithProbe(Buffer.from("é😀", "utf8")));
+  check("release_frame valid multibyte UTF-8 validates", JSON.stringify([r.ok, r.errors]),
+    JSON.stringify([true, []]));
+
   t = clone(allow); t.release_status = "NOT_APPLICABLE";
   check("ALLOW with NOT_APPLICABLE refused", V(t).ok, false);
   t = clone(allow); delete t.release_frame;
