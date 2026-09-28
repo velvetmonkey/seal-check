@@ -33,3 +33,13 @@ jobs:
       - run: node --test test/kernel-loader.test.mjs
       - run: node test/spine-receipt.test.cjs
       - run: node scripts/contrast.mjs
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser

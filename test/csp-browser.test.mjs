@@ -45,6 +45,7 @@ test("CSP loads without diagnostics, blocks cross-origin requests, and observes 
   try {
     playwright = require("playwright");
   } catch (error) {
+    if (process.env.SEAL_CHECK_REQUIRE_BROWSER === "1") throw error;
     t.skip(`Playwright is unavailable: ${error.message}`);
     return;
   }
@@ -224,17 +225,17 @@ test("file inputs clear after successful and failed reads so the same file can b
       await new Promise((resolve) => setTimeout(resolve, 100));
       const second = { value: input.value, text: textarea.value, changes };
       const failedFile = new File(["bad"], "failed-file.txt", { type: "text/plain" });
-      const originalText = File.prototype.text;
-      File.prototype.text = async function () {
+      const originalArrayBuffer = File.prototype.arrayBuffer;
+      File.prototype.arrayBuffer = async function () {
         if (this.name === "failed-file.txt") throw new Error("read failed");
-        return originalText.call(this);
+        return originalArrayBuffer.call(this);
       };
       const transfer = new DataTransfer();
       transfer.items.add(failedFile);
       input.files = transfer.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 100));
-      File.prototype.text = originalText;
+      File.prototype.arrayBuffer = originalArrayBuffer;
       return { first, second, failureValue: input.value, failureMessage: document.getElementById("rv-summary").textContent };
     }, { inputId, textId });
     assert.equal(result.first.text, "repeated content", `${inputId}: first selection populates text`);
@@ -245,4 +246,26 @@ test("file inputs clear after successful and failed reads so the same file can b
     assert.equal(result.failureValue, "", `${inputId}: failed read clears file input`);
     assert.match(result.failureMessage, /File could not be read: read failed/, `${inputId}: failed read reports the error`);
   }
+});
+
+test("fixture receipt renders a verdict and rejects a one-byte change", async (t) => {
+  const playwright = require("playwright");
+  const { server, url } = await startStaticServer();
+  t.after(() => server.close());
+  const browser = await playwright.chromium.launch({ headless: true, executablePath: process.env.CHROME_FOR_TESTING || undefined });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(url);
+  await page.waitForFunction(() => document.querySelector("#rv-verdict")?.textContent === "ALLOWED");
+  const receipt = await readFile(new URL("../examples/allow.receipt.json", import.meta.url), "utf8");
+  await page.locator("#paste-input").fill(receipt);
+  await page.waitForFunction(() => document.querySelector("#rv-verdict")?.textContent === "ALLOWED");
+  await page.locator("#rv-headline").filter({ hasText: "Content checks passed; signer identity not confirmed" }).waitFor();
+  assert.equal(await page.locator("#rv-verdict").textContent(), "ALLOWED");
+
+  const tampered = receipt.replace('"signature": "583eba', '"signature": "583ebb');
+  assert.notEqual(tampered, receipt, "the negative control must change the fixture");
+  await page.locator("#paste-input").fill(tampered);
+  await page.locator("#rv-headline").filter({ hasText: "does NOT check out" }).waitFor();
+  assert.doesNotMatch(await page.locator("#rv-headline").textContent(), /Content checks passed/);
 });
