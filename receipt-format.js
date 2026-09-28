@@ -957,8 +957,13 @@ function validateV3Extras(r, errors, ed25519Verify) {
         if (end >= 2 && frame[end - 2] === 13 && frame[end - 1] === 10) end -= 2;
         else if (end >= 1 && frame[end - 1] === 10) end -= 1;
         let frameJson;
-        try { frameJson = JSON.parse(new TextDecoder().decode(frame.subarray(0, end))); }
-        catch { errors.push("release_frame: decoded frame is not a JSON object"); }
+        let frameText;
+        try { frameText = new TextDecoder("utf-8", { fatal: true }).decode(frame.subarray(0, end)); }
+        catch { errors.push("release_frame: decoded frame is not valid UTF-8"); }
+        if (frameText !== undefined) {
+          try { frameJson = JSON.parse(frameText); }
+          catch { errors.push("release_frame: decoded frame is not a JSON object"); }
+        }
         if (frameJson !== undefined &&
             (!isObj(frameJson) || frameJson.operation_id !== r.operation_id))
           errors.push("release_frame: frame operation_id does not equal the signed top-level operation_id (the id must be forwarded unchanged)");
